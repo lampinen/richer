@@ -13,10 +13,11 @@ k = 3 #number in row to win,
 #####network/learning parameters###############
 
 nhidden = 20
+nhiddendescriptor = 20
 descriptor_output_size = (n+n+2)*(4) #(position: n rows + n columns + 2 diagonals) * (interesting state: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) TODO: include other useful feature descriptors, e.g. "forks"
 discount_factor = 0.98
 eta = 0.005
-eta_decay = 0.85 #Multiplicative decay per epoch
+eta_decay = 0.8 #Multiplicative decay per epoch
 
 
 ###############################################
@@ -123,7 +124,7 @@ def update_state(state,selection):
 
 #############Q-approx network####################
 initialized_stuff = {} #Dictionary to hold weights, etc., to share initilizations between network instantiations (for fair comparison)
-class Q_approx:
+class Q_approx(object):
     def __init__(self):
 	self.input_ph = tf.placeholder(tf.float32, shape=[n*n,1])
 	self.target_ph = tf.placeholder(tf.float32, shape=[n*n,1])
@@ -136,8 +137,6 @@ class Q_approx:
 	    self.b3 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
 	    self.W4 = tf.Variable(tf.random_normal([n*n,nhidden],0,0.1))
 	    self.b4 = tf.Variable(tf.random_normal([n*n,1],0,0.1))
-	    self.keep_prob = tf.placeholder(tf.float32) 
-	    self.eta = tf.placeholder(tf.float32) 
 	    initialized_stuff['W1'] = self.W1
 	    initialized_stuff['W2'] = self.W2
 	    initialized_stuff['W3'] = self.W3
@@ -155,17 +154,23 @@ class Q_approx:
 	    self.b2 = tf.Variable(initialized_stuff['b2'].initialized_value())
 	    self.b3 = tf.Variable(initialized_stuff['b3'].initialized_value())
 	    self.b4 = tf.Variable(initialized_stuff['b4'].initialized_value())
+	self.keep_prob = tf.placeholder(tf.float32) 
 	self.output = tf.nn.tanh(tf.matmul(self.W4,tf.nn.tanh(tf.matmul(self.W3,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W2,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W1,self.input_ph)+self.b1),keep_prob=self.keep_prob))+self.b2),keep_prob=self.keep_prob))+self.b3))+self.b4)
 	self.error = tf.square(self.output-self.target_ph)
+	self.eta = tf.placeholder(tf.float32) 
 	self.optimizer = tf.train.AdamOptimizer(self.eta)
-	self.train = self.optimizer.minimize(tf.reduce_mean(self.error))
-	self.sess = tf.Session()
-	self.sess.run(tf.initialize_all_variables())
+	self.train = self.optimizer.minimize(tf.reduce_sum(self.error))
 	self.epsilon = 0.1 #epsilon greedy
 	self.curr_eta = eta
+	self.sess = None
 
-    def __del__self():
-	sess.close()	 
+    def initialize_TF_sess(self):
+	self.sess = tf.Session()
+	self.sess.run(tf.initialize_all_variables())
+
+
+    def __del__(self):
+	self.sess.close()	 
 
     def Q(self,state,keep_prob=1.0): #Outputs estimated Q-value for each move in this state
 	return self.sess.run(self.output,feed_dict={self.input_ph: state.reshape((9,1)),self.keep_prob: keep_prob})  
@@ -212,10 +217,11 @@ class Q_approx:
 class Q_approx_and_descriptor(Q_approx):
     def __init__(self):
 	super(Q_approx_and_descriptor,self).__init__()
+	self.description_target_ph = tf.placeholder(tf.float32, shape=[descriptor_output_size,1])
 	if ('W3d' not in initialized_stuff.keys()):
 	    
-	    self.W3d = tf.Variable(tf.random_normal([n*n,nhiddendescriptor],0,0.1))
-	    self.b3d = tf.Variable(tf.random_normal([n*n,1],0,0.1))
+	    self.W3d = tf.Variable(tf.random_normal([nhiddendescriptor,nhidden],0,0.1))
+	    self.b3d = tf.Variable(tf.random_normal([nhiddendescriptor,1],0,0.1))
 	    self.W4d = tf.Variable(tf.random_normal([descriptor_output_size,nhiddendescriptor],0,0.1))
 	    self.b4d = tf.Variable(tf.random_normal([descriptor_output_size,1],0,0.1))
 	    initialized_stuff['W3d'] = self.W3d
@@ -228,12 +234,18 @@ class Q_approx_and_descriptor(Q_approx):
 	    self.W4d = tf.Variable(initialized_stuff['W4d'].initialized_value())
 	    self.b4d = tf.Variable(initialized_stuff['b4d'].initialized_value())
 	self.description_output = tf.nn.tanh(tf.matmul(self.W4d,tf.nn.tanh(tf.matmul(self.W3d,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W2,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W1,self.input_ph)+self.b1),keep_prob=self.keep_prob))+self.b2),keep_prob=self.keep_prob))+self.b3d))+self.b4d)
+	self.description_error = tf.square(self.description_output-self.description_target_ph)
+	self.description_train = self.optimizer.minimize(tf.reduce_sum(self.description_error))
 
     def describe(self,state,keep_prob=1.0): #Outputs estimated description for the current state
 	return self.sess.run(self.description_output,feed_dict={self.input_ph: state.reshape((9,1)),self.keep_prob: keep_prob})  
 
+
+    def get_description_error(self,state,keep_prob=1.0): #Outputs description cross entropy for the current state
+	return self.sess.run(self.description_error,feed_dict={self.input_ph: state.reshape((9,1)),self.description_target_ph: description_target(state).reshape((descriptor_output_size,1)),self.keep_prob: keep_prob})  
+
     def train_description(self,state):
-	self.sess.run(self.train,feed_dict={self.input_ph: state.reshape((9,1)),self.target_ph: description_target(state),self.keep_prob: 0.5,self.eta: self.curr_eta}) 
+	self.sess.run(self.description_train,feed_dict={self.input_ph: state.reshape((9,1)),self.description_target_ph: description_target(state).reshape((descriptor_output_size,1)),self.keep_prob: 0.5,self.eta: self.curr_eta}) 
 
 #####Data generation#####################
 
@@ -260,43 +272,7 @@ def generate(generator,condition,n):
     return data
 
 
-##Just practice making legal moves
-#data_0 = generate(make_ttt_array,lambda x:  not (threeinrow(x) or threeinrow(-x)),400)
-#test_data_0 = generate(make_ttt_array,lambda x: not (threeinrow(x) or threeinrow(-x)) and not any([numpy.array_equal(x,arr) for arr in data_0]),100)
-#
-##Practice getting 3 in a row
-#data_1 = generate(make_ttt_array,lambda x: unblockedopptwo(-x) and not (threeinrow(x) or threeinrow(-x)),400)
-#test_data_1 = generate(make_ttt_array,lambda x: unblockedopptwo(-x) and not (threeinrow(x) or threeinrow(-x)) and not any([numpy.array_equal(x,arr) for arr in data_1+data_0]),100)
-#
-#
-#c_Q_net = Q_approx()
-#
-#def train(data_set,epochs=1):
-#    for e in xrange(epochs):
-#	order = numpy.random.permutation(len(data_set))
-#	for i in order:
-#	    c_Q_net.train_Q(data_set[i])	
-#
-#def test(test_data_set,verbose=False):
-#    score = 0
-#    illegal = 0
-#    for datum in test_data_set:
-#	curr = c_Q_net.Q(datum)	
-#	new_state = update_state(datum,numpy.argmax(curr))
-#	if new_state == []:
-#	    illegal += 1
-#	elif threeinrow(new_state):
-#	    score += 1
-#	elif unblockedopptwo(new_state):
-#	    score += -1
-#	if verbose:
-#	    print(datum,new_state)
-#    print "avg score = %f" %(float(score)/len(test_data_set)) 
-#    print "illegal move rate = %f" %(float(illegal)/len(test_data_set)) 
-#
-
-
-def play_game(Q_net,opponent,train=False):
+def play_game(Q_net,opponent,train=False,description_train=False):
     gofirst = numpy.random.randint(0,2)
     state = numpy.zeros((3,3))
     i = 0
@@ -305,39 +281,112 @@ def play_game(Q_net,opponent,train=False):
 	    state = opponent(state)
 	else: 
 	    state = Q_net.Q_move(state,train=train) 	    
+	if description_train and (unblockedopptwo(state) or unblockedopptwo(-state) or threeinrow(state) or threeinrow(-state)):
+	    Q_net.train_description(state)	
 	i += 1
+	
     if threeinrow(state):
 	return 1
     if threeinrow(-state) or unblockedopptwo(state):
 	return -1
     return 0
-	    
-
-
-basic_Q_net = Q_approx()
-
-
 
 def train_on_games(Q_net,opponent,numgames=1000):
+    score = 0
     for game in xrange(numgames):
-	play_game(Q_net,opponent,train=True)
+	score += play_game(Q_net,opponent,train=True)
+    return  (float(score)/numgames) 
 
 def test_on_games(Q_net,opponent,numgames=1000):
     score = 0
     for game in xrange(numgames):
 	score += play_game(Q_net,opponent,train=True)
-    print "avg test score = %f" %(float(score)/numgames) 
+    return  (float(score)/numgames) 
+
+def train_descriptions(Q_net,data_set,epochs=1):
+    for e in xrange(epochs):
+	order = numpy.random.permutation(len(data_set))
+	for i in order:
+	    Q_net.train_description(data_set[i])	
+
+def test_descriptions(Q_net,data_set):
+    descr_MSE = 0.0
+    for i in xrange(len(data_set)):
+	descr_MSE += numpy.sum(Q_net.get_description_error(data_set[i])[0])	
+    print "Description MSE = %f" %(descr_MSE/len(data_set)) 
+    return descr_MSE/len(data_set)
+
+    
+def train_on_games_with_descriptions(Q_net,opponent,numgames=1000,numdescriptions=100):
+    description_step = numgames/numdescriptions
+    score = 0
+    for game in xrange(numgames):
+	score += play_game(Q_net,opponent,train=True,description_train=((game%description_step)==0))
+    return  (float(score)/numgames) 
+
+
+#network initialization
+basic_Q_net = Q_approx()
+basic_Q_net.initialize_TF_sess()
+descr_Q_net = Q_approx_and_descriptor()
+descr_Q_net.initialize_TF_sess()
+
+
+#description data creation
+descr_train_data = generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),3000)
+descr_test_data = generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),3000)
 
 
 
-print "Initial test:"
-test_on_games(basic_Q_net,random_opponent,numgames=10000)
+
+#print "Description initial test (descr_Q_net):"
+#test_descriptions(descr_Q_net,descr_test_data)
+#print "Initial test (basic_Q_net):"
+#test_on_games(basic_Q_net,random_opponent,numgames=1000)
+#print "Initial test (descr_Q_net):"
+#test_on_games(descr_Q_net,random_opponent,numgames=1000)
+
+
+descr_score_track = []
+descr_descr_MSE_track = []
+basic_score_track = []
+
+#Description pretraining
+print "Pre-training descriptions..."
+train_descriptions(descr_Q_net,descr_train_data,epochs=20)
+print "Description test after pre-training (descr_Q_net):"
+test_descriptions(descr_Q_net,descr_test_data)
+
+print descr_test_data[1]
+print descr_Q_net.describe(descr_test_data[1]).reshape((8,4))
+print description_target( descr_test_data[1]).reshape((8,4))
+
 print "Training..."
-for i in xrange(100):
+for i in xrange(50):
     print "training epoch %i" %i
-    train_on_games(basic_Q_net,random_opponent,numgames=500)
-    test_on_games(basic_Q_net,random_opponent,numgames=1000)
+    train_on_games(basic_Q_net,random_opponent,numgames=1000)
+    train_on_games_with_descriptions(descr_Q_net,random_opponent,numgames=1000,numdescriptions=20)
+
+    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
+    print "basic_Q_net average score: %f" %temp
+    basic_score_track.append(temp)
+    temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
+    print "descr_Q_net average score: %f" %temp
+    descr_score_track.append(temp)
+    temp = test_descriptions(descr_Q_net,descr_test_data)
+    descr_descr_MSE_track.append(temp)
+    
+
     basic_Q_net.curr_eta *= eta_decay
+    descr_Q_net.curr_eta *= eta_decay
+
 
 print "Training done, final test:"
 test_on_games(basic_Q_net,random_opponent,numgames=10000)
+test_on_games(descr_Q_net,random_opponent,numgames=10000)
+
+numpy.savetxt('descr_score_track.csv',descr_score_track,delimiter=',')
+numpy.savetxt('basic_score_track.csv',basic_score_track,delimiter=',')
+numpy.savetxt('descr_descr_MSE_track.csv',descr_descr_MSE_track,delimiter=',')
+
+
