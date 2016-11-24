@@ -355,7 +355,7 @@ def train_on_games_with_descriptions(Q_net,opponent,numgames=1000,numdescription
 for pretraining_condition in pretraining_conditions:
     for eta in learning_rates:
 	description_eta = eta
-	for eta_decay in learning_rate_decays
+	for eta_decay in learning_rate_decays:
 	    avg_descr_score_track = numpy.zeros(21)
 	    avg_descr_descr_MSE_track = numpy.zeros(21)
 	    avg_basic_score_track = numpy.zeros(21)
@@ -380,7 +380,7 @@ for pretraining_condition in pretraining_conditions:
 		if pretraining_condition:
 		    #description data creation
 		    descr_train_data = generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000)
-		    descr_test_data = generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000)
+		descr_test_data = generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000)
 
 
 
@@ -388,18 +388,18 @@ for pretraining_condition in pretraining_conditions:
 		descr_descr_MSE_track = []
 		basic_score_track = []
 
-		#print "Description initial test (descr_Q_net):"
-		#temp = test_descriptions(descr_Q_net,descr_test_data)
-		#print temp
-		#descr_descr_MSE_track.append(temp)
-		#print "Initial test (basic_Q_net):"
-		#temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
-		#print temp
-		#basic_score_track.append(temp)
-		#print "Initial test (descr_Q_net):"
-		#temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
-		#print temp
-		#descr_score_track.append(temp)
+#		print "Description initial test (descr_Q_net):"
+		temp = test_descriptions(descr_Q_net,descr_test_data)
+#		print temp
+		descr_descr_MSE_track.append(temp)
+#		print "Initial test (basic_Q_net):"
+		temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
+#		print temp
+		basic_score_track.append(temp)
+#		print "Initial test (descr_Q_net):"
+		temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
+#		print temp
+		descr_score_track.append(temp)
 
 
 		if pretraining_condition:
@@ -411,15 +411,15 @@ for pretraining_condition in pretraining_conditions:
 
 		print "Training..."
 		for i in xrange(20):
-		    print "training epoch %i" %i
+#		    print "training epoch %i" %i
 		    train_on_games(basic_Q_net,random_opponent,numgames=500)
 		    train_on_games_with_descriptions(descr_Q_net,random_opponent,numgames=500,numdescriptions=50)
 
 		    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
-		    print "basic_Q_net average score: %f" %temp
+#		    print "basic_Q_net average score: %f" %temp
 		    basic_score_track.append(temp)
 		    temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
-		    print "descr_Q_net average score: %f" %temp
+#		    print "descr_Q_net average score: %f" %temp
 		    descr_score_track.append(temp)
 		    temp = test_descriptions(descr_Q_net,descr_test_data)
 		    descr_descr_MSE_track.append(temp)
