@@ -5,7 +5,7 @@ import matplotlib.pyplot as plot
 ####Testing parameters###############
 
 learning_rates = [0.001,0.005,0.01]
-learning_rate_decays = [0.7,0.8,0.9]
+learning_rate_decays = [0.8]
 pretraining_conditions = [True,False]
 num_runs_per = 10
 
@@ -27,7 +27,7 @@ discount_factor = 0.98
 #description_eta = 0.005
 #eta_decay = 0.8 #Multiplicative decay per epoch
 description_eta_decay = 0.7 #Multiplicative decay per epoch
-
+nepochs = 10
 
 ###############################################
 
@@ -356,9 +356,9 @@ for pretraining_condition in pretraining_conditions:
     for eta in learning_rates:
 	description_eta = eta
 	for eta_decay in learning_rate_decays:
-	    avg_descr_score_track = numpy.zeros(21)
-	    avg_descr_descr_MSE_track = numpy.zeros(21)
-	    avg_basic_score_track = numpy.zeros(21)
+	    avg_descr_score_track = numpy.zeros(nepochs+1)
+	    avg_descr_descr_MSE_track = numpy.zeros(nepochs+1)
+	    avg_basic_score_track = numpy.zeros(nepochs+1)
 	    for run in xrange(num_runs_per):
 		print "pretrain-%s_eta-%f_eta_decay-%f_run-%i" %(str(pretraining_condition),eta,eta_decay,run)
 		tf.set_random_seed(run) 
@@ -389,9 +389,9 @@ for pretraining_condition in pretraining_conditions:
 		basic_score_track = []
 
 #		print "Description initial test (descr_Q_net):"
-		temp = test_descriptions(descr_Q_net,descr_test_data)
+#		temp = test_descriptions(descr_Q_net,descr_test_data)
 #		print temp
-		descr_descr_MSE_track.append(temp)
+#		descr_descr_MSE_track.append(temp)
 #		print "Initial test (basic_Q_net):"
 		temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
 #		print temp
@@ -407,22 +407,28 @@ for pretraining_condition in pretraining_conditions:
 #		    print "Pre-training descriptions..."
 		    train_descriptions(descr_Q_net,descr_train_data,epochs=1)
 #		    print "Description test after pre-training (descr_Q_net):"
-#		    test_descriptions(descr_Q_net,descr_test_data)
+#		    temp = test_descriptions(descr_Q_net,descr_test_data)
+#		    print temp
+#		    descr_descr_MSE_track.append(temp)
+		else: #otherwise test without pre-training
+		    pass
+#		    temp = test_descriptions(descr_Q_net,descr_test_data)
+#		    descr_descr_MSE_track.append(temp)
 
 		print "Training..."
-		for i in xrange(20):
-#		    print "training epoch %i" %i
+		for i in xrange(10):
+		    print "training epoch %i" %i
 		    train_on_games(basic_Q_net,random_opponent,numgames=500)
 		    train_on_games_with_descriptions(descr_Q_net,random_opponent,numgames=500,numdescriptions=50)
 
 		    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
-#		    print "basic_Q_net average score: %f" %temp
+		    print "basic_Q_net average score: %f" %temp
 		    basic_score_track.append(temp)
 		    temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
-#		    print "descr_Q_net average score: %f" %temp
-		    descr_score_track.append(temp)
-		    temp = test_descriptions(descr_Q_net,descr_test_data)
-		    descr_descr_MSE_track.append(temp)
+		    print "descr_Q_net average score: %f" %temp
+#		    descr_score_track.append(temp)
+#		    temp = test_descriptions(descr_Q_net,descr_test_data)
+#		    descr_descr_MSE_track.append(temp)
 		    
 
 		    if (i%2) == 1:
@@ -435,11 +441,11 @@ for pretraining_condition in pretraining_conditions:
 
 		avg_basic_score_track += numpy.array(basic_score_track)
 		avg_descr_score_track += numpy.array(descr_score_track)
-		avg_descr_descr_MSE_track += numpy.array(descr_descr_MSE_track)
+#		avg_descr_descr_MSE_track += numpy.array(descr_descr_MSE_track)
 
 
 		
 	    numpy.savetxt('avg_descr_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_score_track,delimiter=',')
 	    numpy.savetxt('avg_basic_score_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),basic_score_track,delimiter=',')
-	    numpy.savetxt('avg_descr_descr_MSE_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_descr_MSE_track,delimiter=',')
+#	    numpy.savetxt('avg_descr_descr_MSE_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_descr_MSE_track,delimiter=',')
 
