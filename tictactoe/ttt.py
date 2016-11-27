@@ -4,10 +4,10 @@ import matplotlib.pyplot as plot
 
 ####Testing parameters###############
 
-learning_rates = [0.001,0.005,0.01]
+learning_rates = [0.001]
 learning_rate_decays = [0.8]
 pretraining_conditions = [True,False]
-num_runs_per = 10
+num_runs_per = 20
 
 
 #####data parameters###########################
@@ -426,7 +426,7 @@ for pretraining_condition in pretraining_conditions:
 		    basic_score_track.append(temp)
 		    temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
 		    print "descr_Q_net average score: %f" %temp
-#		    descr_score_track.append(temp)
+		    descr_score_track.append(temp)
 #		    temp = test_descriptions(descr_Q_net,descr_test_data)
 #		    descr_descr_MSE_track.append(temp)
 		    
