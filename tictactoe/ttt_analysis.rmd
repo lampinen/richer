@@ -1,0 +1,43 @@
+---
+title: "ttt analysis"
+author: "AndrewLampinen"
+date: "November 27, 2016"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+load data
+---------------
+
+
+```{r}
+results_dir = 'results/firstrun/'
+
+d = data.frame(epoch=c(),average_score=c(),pretrain=c(),eta=c(),learning=c())
+
+for (pretrain in c('True','False')) {
+  for (eta in c('0.001000','0.005000','0.010000')) {
+    this_track = read.csv(sprintf('%savg_basic_score_track_pretrain-%s_eta-%s_eta_decay-0.800000.csv',results_dir,pretrain,eta),header=F)
+    d = rbind(d,data.frame(epoch=0:10,average_score=this_track$V1,pretrain=rep(pretrain,11),eta=rep(eta,11),learning=rep('basic',11)))
+    this_track = read.csv(sprintf('%savg_descr_score_track_pretrain-%s_eta-%s_eta_decay-0.800000.csv',results_dir,pretrain,eta),header=F)
+    d = rbind(d,data.frame(epoch=0:10,average_score=this_track$V1,pretrain=rep(pretrain,11),eta=rep(eta,11),learning=rep('descr',11)))
+  }
+}
+```
+
+
+plot data 
+------------
+
+```{r}
+ggplot(data=d,aes(x=epoch,y=average_score,color=learning)) +
+  geom_line() +
+  facet_grid(pretrain ~ eta) +
+  theme_bw()
+```
+
