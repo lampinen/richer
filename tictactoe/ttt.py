@@ -1,13 +1,13 @@
 import tensorflow as tf
 import numpy
-import matplotlib.pyplot as plot
+#import matplotlib.pyplot as plot
 
 ####Testing parameters###############
 
-learning_rates = [0.001]
+learning_rates = [0.001,0.0005]
 learning_rate_decays = [0.8]
-pretraining_conditions = [True,False]
-num_runs_per = 20
+pretraining_conditions = [False,True]
+num_runs_per = 50
 
 
 #####data parameters###########################
@@ -361,8 +361,8 @@ for pretraining_condition in pretraining_conditions:
 	    avg_basic_score_track = numpy.zeros(nepochs+1)
 	    for run in xrange(num_runs_per):
 		print "pretrain-%s_eta-%f_eta_decay-%f_run-%i" %(str(pretraining_condition),eta,eta_decay,run)
-		tf.set_random_seed(run) 
-		numpy.random.seed(run)
+		tf.set_random_seed(run+1) 
+		numpy.random.seed(run+1)
 
 
 		initialized_stuff = {} #Dictionary to hold weights, etc., to share initilizations between network instantiations (for fair comparison)
@@ -442,10 +442,15 @@ for pretraining_condition in pretraining_conditions:
 		avg_basic_score_track += numpy.array(basic_score_track)
 		avg_descr_score_track += numpy.array(descr_score_track)
 #		avg_descr_descr_MSE_track += numpy.array(descr_descr_MSE_track)
+	        numpy.savetxt('descr_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),descr_score_track,delimiter=',')
+	        numpy.savetxt('basic_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),basic_score_track,delimiter=',')
 
 
 		
-	    numpy.savetxt('avg_descr_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_score_track,delimiter=',')
-	    numpy.savetxt('avg_basic_score_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),basic_score_track,delimiter=',')
+	    avg_basic_score_track = avg_basic_score_track/num_runs_per
+	    avg_descr_score_track = avg_descr_score_track/num_runs_per
+ 
+	    numpy.savetxt('avg_descr_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_descr_score_track,delimiter=',')
+	    numpy.savetxt('avg_basic_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_basic_score_track,delimiter=',')
 #	    numpy.savetxt('avg_descr_descr_MSE_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_descr_MSE_track,delimiter=',')
 
