@@ -4,10 +4,10 @@ import numpy
 
 ####Testing parameters###############
 
-learning_rates = [0.001,0.0005]
+learning_rates = [0.001,0.005,0.01]
 learning_rate_decays = [0.8]
 pretraining_conditions = [False,True]
-num_runs_per = 50
+num_runs_per = 20
 
 
 #####data parameters###########################
@@ -91,11 +91,16 @@ def description_target(state): #helper, generates description target for a given
 	    target.extend([-1,-1,-1,-1])	
     target = numpy.array(target)
     return target.reshape(8,descriptor_output_size)
+
+def nbyn_input_to_2bynbyn_input(state):
+    """Converts inputs from n x n -1/0/+1 representation to two n x n arrays, each containing the piece locations for one player"""
+    return numpy.concatenate((numpy.ndarray.flatten(1*(state == -1)),numpy.ndarray.flatten(1*(state == 1))))
+
+
 ##########Opponents##############
 
 def random_opponent(state):
     newstate = numpy.copy(state)
-
     selection = numpy.random.randint(0,9)
     if numpy.shape(newstate) == (n,n): #handle non-flattened arrays
 	selection = numpy.unravel_index(selection,(n,n))
@@ -103,10 +108,54 @@ def random_opponent(state):
 	selection = numpy.random.randint(0,9)
 	if numpy.shape(newstate) == (n,n): #handle non-flattened arrays
 	    selection = numpy.unravel_index(selection,(n,n))
-
     newstate[selection] = -1
     return newstate 
 
+def single_move_foresight_opponent(state):
+    newstate = numpy.copy(state)
+    newstate = newstate.reshape((n,n))
+    if unblockedopptwo(-state) or unblockedopptwo(state):
+	colsum = numpy.sum(state,axis=0)
+	rowsum = numpy.sum(state,axis=1) 
+	d1sum = numpy.sum(numpy.diag(state))
+	d2sum = numpy.sum(numpy.diag(numpy.fliplr(state)))
+	if numpy.any(rowsum == -2):
+	    selection = numpy.outer(rowsum == -2,state[rowsum == -2,:] == 0) 
+	elif numpy.any(colsum == -2):
+	    selection = numpy.outer(state[:,colsum == -2] == 0,colsum == -2) 
+	elif d1sum == -2:
+	    dis0 = numpy.diag(state) == 0
+	    selection = numpy.outer(dis0,dis0) 
+	elif d2sum == -2:
+	    dis0 = numpy.diag(numpy.fliplr(state)) == 0
+	    selection = numpy.fliplr(numpy.outer(dis0,dis0)) 	
+	elif numpy.any(rowsum == 2):
+	    selection = numpy.outer(rowsum == 2,state[rowsum == 2,:] == 0) 
+	elif numpy.any(colsum == 2):
+	    selection = numpy.outer(state[:,colsum == 2] == 0,colsum == 2) 
+	elif d1sum == 2:
+	    dis0 = numpy.diag(state) == 0
+	    selection = numpy.outer(dis0,dis0) 
+	elif d2sum == 2:
+	    dis0 = numpy.diag(numpy.fliplr(state)) == 0
+	    selection = numpy.fliplr(numpy.outer(dis0,dis0)) 
+	else:
+	    print "Error! Unhandled position for single_move_foresight_opponent"
+	    exit(1)
+    else:
+	selection = numpy.random.randint(0,9)
+	selection = numpy.unravel_index(selection,(n,n))
+	while newstate[selection] != 0:
+	    selection = numpy.random.randint(0,9)
+	    selection = numpy.unravel_index(selection,(n,n))
+    newstate[selection] = -1
+    return newstate.reshape(numpy.shape(state)) #return in original shape 
+
+def single_move_foresight_unpredictable_opponent(state):
+    if numpy.random.randint(0,2):
+	return single_move_foresight_opponent(state)
+    else:
+	return random_opponent(state)
 
 #################################
 
@@ -129,10 +178,10 @@ initialized_stuff = {} #Dictionary to hold weights, etc., to share initilization
 class Q_approx(object):
     def __init__(self):
 	global initialized_stuff
-	self.input_ph = tf.placeholder(tf.float32, shape=[n*n,1])
+	self.input_ph = tf.placeholder(tf.float32, shape=[n*n*2,1])
 	self.target_ph = tf.placeholder(tf.float32, shape=[n*n,1])
 	if initialized_stuff == {}:
-	    self.W1 = tf.Variable(tf.random_normal([nhidden,n*n],0,0.1)) 
+	    self.W1 = tf.Variable(tf.random_normal([nhidden,n*n*2],0,0.1)) 
 	    self.b1 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
 	    self.W2 = tf.Variable(tf.random_normal([nhidden,nhidden],0,0.1))
 	    self.b2 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
@@ -171,7 +220,7 @@ class Q_approx(object):
 	self.sess = sess
 
     def Q(self,state,keep_prob=1.0): #Outputs estimated Q-value for each move in this state
-	return self.sess.run(self.output,feed_dict={self.input_ph: state.reshape((9,1)),self.keep_prob: keep_prob})  
+	return self.sess.run(self.output,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.keep_prob: keep_prob})  
 
     def train_Q(self,state):
 	curr = self.Q(state,keep_prob=0.5)	
@@ -188,7 +237,7 @@ class Q_approx(object):
 		curr[selection] = this_reward 
 	    else:
 		curr[selection] = this_reward+discount_factor*max(self.Q(new_state))
-	self.sess.run(self.train,feed_dict={self.input_ph: state.reshape((9,1)),self.target_ph: curr,self.keep_prob: 0.5,self.eta: self.curr_eta}) 
+	self.sess.run(self.train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.target_ph: curr,self.keep_prob: 0.5,self.eta: self.curr_eta}) 
 	return new_state
 
     def Q_move(self,state,train=False): #Executes a move and returns the new state. Replaces illegal moves with random legal moves
@@ -242,7 +291,7 @@ class Q_approx_and_descriptor(Q_approx):
 	this_description = []
 	for j in xrange(n+n+2):
 	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
-	    this_description.append(self.sess.run(self.description_output,feed_dict={self.input_ph: state.reshape((9,1)),self.description_input_ph: this_description_input,self.keep_prob: keep_prob})) 
+	    this_description.append(self.sess.run(self.description_output,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.keep_prob: keep_prob})) 
 	return 
 
 
@@ -252,7 +301,7 @@ class Q_approx_and_descriptor(Q_approx):
 	for j in xrange(n+n+2):
 	    this_description_target = state_full_description_target[j].reshape((descriptor_output_size,1))
 	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
-	    SSE += self.sess.run(self.description_error,feed_dict={self.input_ph: state.reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: keep_prob}) 
+	    SSE += self.sess.run(self.description_error,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: keep_prob}) 
 	return SSE 
 
     def train_description(self,state): #right now, only trains on describing events given locations TODO: also include picking locations for events, but need to handle multiple occurrences
@@ -262,7 +311,7 @@ class Q_approx_and_descriptor(Q_approx):
 	    this_description_target = state_full_description_target[i].reshape((descriptor_output_size,1))
 	    if sum(this_description_target[-4:]) > -4:
 		this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],i).reshape((n+n+2+4,1))
-		self.sess.run(self.description_train,feed_dict={self.input_ph: state.reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
+		self.sess.run(self.description_train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
 	    else:
 		boring_list.append(i)
 	    
@@ -271,7 +320,7 @@ class Q_approx_and_descriptor(Q_approx):
 	for j in boring_list:
 	    this_description_target = state_full_description_target[j].reshape((descriptor_output_size,1))
 	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((n+n+2+4,1))
-	    self.sess.run(self.description_train,feed_dict={self.input_ph: state.reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
+	    self.sess.run(self.description_train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
 	    
 	    
 
@@ -361,8 +410,8 @@ for pretraining_condition in pretraining_conditions:
 	    avg_basic_score_track = numpy.zeros(nepochs+1)
 	    for run in xrange(num_runs_per):
 		print "pretrain-%s_eta-%f_eta_decay-%f_run-%i" %(str(pretraining_condition),eta,eta_decay,run)
-		tf.set_random_seed(run+1) 
-		numpy.random.seed(run+1)
+		tf.set_random_seed(run) 
+		numpy.random.seed(run)
 
 
 		initialized_stuff = {} #Dictionary to hold weights, etc., to share initilizations between network instantiations (for fair comparison)
@@ -418,8 +467,8 @@ for pretraining_condition in pretraining_conditions:
 		print "Training..."
 		for i in xrange(10):
 		    print "training epoch %i" %i
-		    train_on_games(basic_Q_net,random_opponent,numgames=500)
-		    train_on_games_with_descriptions(descr_Q_net,random_opponent,numgames=500,numdescriptions=50)
+		    train_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=500)
+		    train_on_games_with_descriptions(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=500,numdescriptions=50)
 
 		    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
 		    print "basic_Q_net average score: %f" %temp
