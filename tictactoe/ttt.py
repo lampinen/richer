@@ -4,7 +4,7 @@ import numpy
 
 ####Testing parameters###############
 
-learning_rates = [0.001,0.005,0.01]
+learning_rates = [0.001,0.0005,0.005]
 learning_rate_decays = [0.8]
 pretraining_conditions = [False,True]
 num_runs_per = 20
@@ -19,15 +19,16 @@ k = 3 #number in row to win,
 
 
 #####network/learning parameters###############
-nhidden = 20
+nhidden = 40
 nhiddendescriptor = 20
 descriptor_output_size = (n+n+2)+(4) #(position: n rows + n columns + 2 diagonals) + (interesting state: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) TODO: include other useful feature descriptors, e.g. "forks"
-discount_factor = 0.98
+discount_factor = 0.8
 #eta = 0.005
 #description_eta = 0.005
 #eta_decay = 0.8 #Multiplicative decay per epoch
 description_eta_decay = 0.7 #Multiplicative decay per epoch
 nepochs = 10
+games_per_epoch = 500
 
 ###############################################
 
@@ -225,18 +226,19 @@ class Q_approx(object):
     def train_Q(self,state):
 	curr = self.Q(state,keep_prob=0.5)	
 	if numpy.random.rand() > self.epsilon:
-	    selection = numpy.argmax(curr)
+	    curr_legal = numpy.copy(curr) 
+	    curr_legal[numpy.reshape(state,(9,1)) != 0] = -numpy.inf #Filter out illegal moves
+	    selection = numpy.argmax(curr_legal) #only selects legal moves
 	else:
 	    selection = numpy.random.randint(0,9)
+	    while state[numpy.unravel_index(selection,(n,n))] != 0: #illegal move
+		selection = numpy.random.randint(0,9)
 	new_state = update_state(state,selection)
-	if new_state == []: #illegal move
-	    curr[selection] = -1
+	this_reward = reward(new_state)
+	if this_reward in [1,-1]: #if won or lost
+	    curr[selection] = this_reward 
 	else:
-	    this_reward = reward(new_state)
-	    if this_reward in [1,-1]: #if won or lost
-		curr[selection] = this_reward 
-	    else:
-		curr[selection] = this_reward+discount_factor*max(self.Q(new_state))
+	    curr[selection] = this_reward+discount_factor*max(self.Q(new_state))
 	self.sess.run(self.train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.target_ph: curr,self.keep_prob: 0.5,self.eta: self.curr_eta}) 
 	return new_state
 
@@ -244,21 +246,12 @@ class Q_approx(object):
 	if train:
 	    new_state = self.train_Q(state)		
 	else:
-	    curr = self.Q(datum,keep_prob = 1.0)	
-	    new_state = update_state(datum,numpy.argmax(curr))
-	if new_state == []: #illegal move -- play randomly
-	    new_state = numpy.copy(state)
-	    selection = numpy.random.randint(0,9)
-	    if numpy.shape(state) == (n,n): #handle non-flattened arrays
-		selection = numpy.unravel_index(selection,(n,n))
-	    while new_state[selection] != 0:
-		selection = numpy.random.randint(0,9)
-		if numpy.shape(new_state) == (n,n): #handle non-flattened arrays
-		    selection = numpy.unravel_index(selection,(n,n))
-	    new_state[selection] = 1
-	    return new_state
-	else: #legal move 
-	    return new_state
+	    curr = self.Q(state,keep_prob = 1.0)	
+	    curr_legal = numpy.copy(curr) 
+	    curr_legal[numpy.reshape(state,(9,1)) != 0] = -numpy.inf #Filter out illegal moves
+	    selection = numpy.argmax(curr_legal) #only selects legal moves
+	    new_state = update_state(state,selection)
+	return new_state
 
 
 class Q_approx_and_descriptor(Q_approx):
@@ -349,7 +342,7 @@ def generate(generator,condition,n):
     return data
 
 
-def play_game(Q_net,opponent,train=False,description_train=False):
+def play_game(Q_net,opponent,train=False,description_train=False,verbose=False):
     gofirst = numpy.random.randint(0,2)
     state = numpy.zeros((3,3))
     i = 0
@@ -361,7 +354,7 @@ def play_game(Q_net,opponent,train=False,description_train=False):
 	if description_train and (unblockedopptwo(state) or unblockedopptwo(-state) or threeinrow(state) or threeinrow(-state)):
 	    Q_net.train_description(state)	
 	i += 1
-	
+
     if threeinrow(state):
 	return 1
     if threeinrow(-state) or unblockedopptwo(state):
@@ -375,10 +368,19 @@ def train_on_games(Q_net,opponent,numgames=1000):
     return  (float(score)/numgames) 
 
 def test_on_games(Q_net,opponent,numgames=1000):
-    score = 0
+    wins = 0
+    draws = 0
+    losses = 0
     for game in xrange(numgames):
-	score += play_game(Q_net,opponent,train=True)
-    return  (float(score)/numgames) 
+	this_score = play_game(Q_net,opponent,train=False)
+	if this_score == 1:
+	    wins += 1
+	elif this_score == -1:
+	    losses += 1
+	else:
+	    draws += 1 
+	
+    return  (float(wins)/numgames,float(draws)/numgames,float(losses)/numgames) 
 
 def train_descriptions(Q_net,data_set,epochs=1):
     for e in xrange(epochs):
@@ -441,13 +443,13 @@ for pretraining_condition in pretraining_conditions:
 #		temp = test_descriptions(descr_Q_net,descr_test_data)
 #		print temp
 #		descr_descr_MSE_track.append(temp)
-#		print "Initial test (basic_Q_net):"
+		print "Initial test (basic_Q_net):"
 		temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
-#		print temp
+		print temp
 		basic_score_track.append(temp)
-#		print "Initial test (descr_Q_net):"
+		print "Initial test (descr_Q_net):"
 		temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
-#		print temp
+		print temp
 		descr_score_track.append(temp)
 
 
@@ -467,14 +469,14 @@ for pretraining_condition in pretraining_conditions:
 		print "Training..."
 		for i in xrange(10):
 		    print "training epoch %i" %i
-		    train_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=500)
-		    train_on_games_with_descriptions(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=500,numdescriptions=50)
+		    train_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch)
+		    train_on_games_with_descriptions(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch,numdescriptions=50)
 
 		    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
-		    print "basic_Q_net average score: %f" %temp
+		    print "basic_Q_net average w/d/l:",temp
 		    basic_score_track.append(temp)
 		    temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
-		    print "descr_Q_net average score: %f" %temp
+		    print "descr_Q_net average w/d/l:",temp
 		    descr_score_track.append(temp)
 #		    temp = test_descriptions(descr_Q_net,descr_test_data)
 #		    descr_descr_MSE_track.append(temp)
