@@ -4,10 +4,10 @@ import numpy
 
 ####Testing parameters###############
 
-learning_rates = [0.001,0.0005,0.005]
+learning_rates = [0.0005,0.005,0.001]
 learning_rate_decays = [0.8]
 pretraining_conditions = [False,True]
-num_runs_per = 20
+num_runs_per = 50
 
 
 #####data parameters###########################
@@ -16,20 +16,17 @@ k = 3 #number in row to win,
 #n = 3, k = 3 is tic tac toe
 #NOTE: code does not actually implement arbitrary k/n at the moment.
 
-
-
 #####network/learning parameters###############
 nhidden = 40
 nhiddendescriptor = 20
 descriptor_output_size = (n+n+2)+(4) #(position: n rows + n columns + 2 diagonals) + (interesting state: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) TODO: include other useful feature descriptors, e.g. "forks"
 discount_factor = 0.8
 #eta = 0.005
-#description_eta = 0.005
+description_eta = 0.0005
 #eta_decay = 0.8 #Multiplicative decay per epoch
 description_eta_decay = 0.7 #Multiplicative decay per epoch
-nepochs = 10
-games_per_epoch = 500
-
+nepochs = 20
+games_per_epoch = 100
 ###############################################
 
 def threeinrow(state): #helper, expects state to be in square shape, only looks for positive 3 in row
@@ -37,6 +34,9 @@ def threeinrow(state): #helper, expects state to be in square shape, only looks 
 
 def unblockedopptwo(state): #helper, expects state to be in square shape, only looks for negative 2 in row without positive one in remaining spot.
     return numpy.any(numpy.sum(state,axis=0) == -2) or numpy.any(numpy.sum(state,axis=1) == -2) or numpy.sum(numpy.diagonal(state)) == -2 or numpy.sum(numpy.diagonal(numpy.fliplr(state))) == -2 
+
+def oppfork(state): #helper, expects state to be in square shape, looks for fork for -1 player (i.e. two unblockedopptwo in different directions) 
+    return numpy.sum(numpy.sum(state,axis=0) == -2) + numpy.sum(numpy.sum(state,axis=1) == -2) + (numpy.sum(numpy.diagonal(state)) == -2) + (numpy.sum(numpy.diagonal(numpy.fliplr(state))) == -2) >= 2
     
 def catsgame(state):  #helper, expects state to be in square shape, checks whether state is a cats game 
     return numpy.sum(numpy.abs(state)) >= 8 and not (threeinrow(state) or unblockedopptwo(state) or threeinrow(-state) or unblockedopptwo(-state))
@@ -157,6 +157,89 @@ def single_move_foresight_unpredictable_opponent(state):
 	return single_move_foresight_opponent(state)
     else:
 	return random_opponent(state)
+
+def optimal_opponent(state):
+    newstate = numpy.copy(state)
+    colsum = numpy.sum(state,axis=0)
+    rowsum = numpy.sum(state,axis=1) 
+    d1sum = numpy.sum(numpy.diag(state))
+    d2sum = numpy.sum(numpy.diag(numpy.fliplr(state)))
+    if numpy.sum(numpy.abs(state)) == 0: #If first play
+	selection = numpy.unravel_index(4,(n,n))
+    elif numpy.sum(numpy.abs(state)) == 1: #If second play
+	if newstate[1,1] == 0:
+	    selection = (1,1)
+	else:
+	    selection = [(0,0),(0,2),(2,2),(2,0)][numpy.random.randint(4)] #play in random corner
+    elif numpy.sum(numpy.abs(state)) == 2: #If third play
+	if newstate[0,0] == 1:
+	    selection =  [(0,2),(2,2),(2,0)][numpy.random.randint(3)] #play in random other corner
+	elif newstate[0,2] == 1: 
+	    selection =  [(0,0),(2,2),(2,0)][numpy.random.randint(3)] #play in random other corner
+	elif newstate[2,0] == 1:
+	    selection =  [(0,0),(2,2),(0,2)][numpy.random.randint(3)] #play in random other corner
+	elif newstate[2,2] == 1:
+	    selection =  [(0,0),(0,2),(2,0)][numpy.random.randint(3)] #play in random other corner
+	else:
+	    selection = [(0,0),(0,2),(2,2),(2,0)][numpy.random.randint(4)] #play in random corner
+    elif unblockedopptwo(-state) or unblockedopptwo(state):
+	if numpy.any(rowsum == -2):
+	    selection = numpy.outer(rowsum == -2,state[rowsum == -2,:] == 0) 
+	elif numpy.any(colsum == -2):
+	    selection = numpy.outer(state[:,colsum == -2] == 0,colsum == -2) 
+	elif d1sum == -2:
+	    dis0 = numpy.diag(state) == 0
+	    selection = numpy.outer(dis0,dis0) 
+	elif d2sum == -2:
+	    dis0 = numpy.diag(numpy.fliplr(state)) == 0
+	    selection = numpy.fliplr(numpy.outer(dis0,dis0)) 	
+	elif numpy.any(rowsum == 2):
+	    selection = numpy.outer(rowsum == 2,state[rowsum == 2,:] == 0) 
+	elif numpy.any(colsum == 2):
+	    selection = numpy.outer(state[:,colsum == 2] == 0,colsum == 2) 
+	elif d1sum == 2:
+	    dis0 = numpy.diag(state) == 0
+	    selection = numpy.outer(dis0,dis0) 
+	elif d2sum == 2:
+	    dis0 = numpy.diag(numpy.fliplr(state)) == 0
+	    selection = numpy.fliplr(numpy.outer(dis0,dis0)) 
+	else:
+	    print "Error! Unhandled two in row position for optimal_opponent"
+	    exit(1)
+    elif numpy.sum(numpy.abs(state)) == 3: #If fourth play and nothing to block or win
+	if newstate[1,1] == -1: #If we hold center
+	    if numpy.sum(rowsum == 1) == 1 and numpy.sum(colsum == 1) == 1: #If both plays are on center edge, adjacent 
+		selection = numpy.outer(rowsum == 1,colsum == 1) 
+	    elif numpy.sum(rowsum == -1) == 1 and numpy.sum(colsum == -1) == 1: #If both plays are on corners, and must be opposite or would have been caught above 
+		if newstate[0,0] == 1:
+		    selection = [(0,2),(2,0)][numpy.random.randint(2)]
+		else:
+		    selection = [(0,0),(2,2)][numpy.random.randint(2)]
+	    else: #opposite center edges, just loses to any corner play 
+		selection = [(0,0),(0,2),(2,2),(2,0)][numpy.random.randint(4)] #play in random corner
+		
+	else: #Opponent holds center, and must have played in opposite corner from us, or we would have blocked. Take another corner and then plays will be forced from there
+		selection = [x for x in [(0,0),(0,2),(2,0),(2,2)] if state[x] == 0][numpy.random.randint(2)]
+    else: #If fifth play or above and nothing to block or win
+	possible_plays = [x for x in [(0,0),(0,1),(0,2),(1,0),(1,1),(1,2),(2,0),(2,1),(2,2)] if state[x] == 0]
+	for possible_play in possible_plays:
+	    temp_new_state = numpy.copy(newstate)
+	    temp_new_state[possible_play] = -1
+	    if oppfork(state): #Making a threat is best we can hope for
+		selection = possible_play
+		break
+	else:
+	    for possible_play in possible_plays:
+		temp_new_state = numpy.copy(newstate)
+		temp_new_state[possible_play] = -1
+		if unblockedopptwo(state): #Making a threat is best we can hope for
+		    selection = possible_play
+		    break
+	    else:
+		selection = possible_plays[numpy.random.randint(len(possible_plays))]	
+    newstate[selection] = -1
+    return newstate.reshape(numpy.shape(state)) #return in original shape 
+
 
 #################################
 
@@ -396,8 +479,8 @@ def test_descriptions(Q_net,data_set):
     return descr_MSE/len(data_set)
 
     
-def train_on_games_with_descriptions(Q_net,opponent,numgames=1000,numdescriptions=100):
-    description_step = numgames/numdescriptions
+def train_on_games_with_descriptions(Q_net,opponent,numgames=1000,pctdescriptions=0.2):
+    description_step = numgames*pctdescriptions
     score = 0
     for game in xrange(numgames):
 	score += play_game(Q_net,opponent,train=True,description_train=((game%description_step)==0))
@@ -407,9 +490,11 @@ for pretraining_condition in pretraining_conditions:
     for eta in learning_rates:
 	description_eta = eta
 	for eta_decay in learning_rate_decays:
-	    avg_descr_score_track = numpy.zeros(nepochs+1)
 	    avg_descr_descr_MSE_track = numpy.zeros(nepochs+1)
-	    avg_basic_score_track = numpy.zeros(nepochs+1)
+	    avg_descr_opp_random_score_track = numpy.zeros((nepochs+1,3))
+	    avg_basic_opp_random_score_track = numpy.zeros((nepochs+1,3))
+	    avg_descr_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
+	    avg_basic_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
 	    for run in xrange(num_runs_per):
 		print "pretrain-%s_eta-%f_eta_decay-%f_run-%i" %(str(pretraining_condition),eta,eta_decay,run)
 		tf.set_random_seed(run) 
@@ -435,23 +520,33 @@ for pretraining_condition in pretraining_conditions:
 
 
 
-		descr_score_track = []
 		descr_descr_MSE_track = []
-		basic_score_track = []
+		descr_opp_random_score_track = []
+		basic_opp_random_score_track = []
+		descr_opp_optimal_score_track = []
+		basic_opp_optimal_score_track = []
 
 #		print "Description initial test (descr_Q_net):"
 #		temp = test_descriptions(descr_Q_net,descr_test_data)
 #		print temp
 #		descr_descr_MSE_track.append(temp)
-		print "Initial test (basic_Q_net):"
+		print "Initial test (basic_Q_net, random opponent):"
 		temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
 		print temp
-		basic_score_track.append(temp)
-		print "Initial test (descr_Q_net):"
+		basic_opp_random_score_track.append(temp)
+		print "Initial test (descr_Q_net, random):"
 		temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
 		print temp
-		descr_score_track.append(temp)
+		descr_opp_random_score_track.append(temp)
 
+		print "Initial test (basic_Q_net, optimal opponent):"
+		temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
+		print temp
+		basic_opp_optimal_score_track.append(temp)
+		print "Initial test (descr_Q_net, optimal):"
+		temp = test_on_games(descr_Q_net,optimal_opponent,numgames=1000)
+		print temp
+		descr_opp_optimal_score_track.append(temp)
 
 		if pretraining_condition:
 		    ##Description pretraining
@@ -467,17 +562,29 @@ for pretraining_condition in pretraining_conditions:
 #		    descr_descr_MSE_track.append(temp)
 
 		print "Training..."
-		for i in xrange(10):
+		for i in xrange(nepochs):
 		    print "training epoch %i" %i
-		    train_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch)
-		    train_on_games_with_descriptions(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch,numdescriptions=50)
+		    
+		    #Mini curriculum
+		    if (i < nepochs//2) or (i % 2 == 0):
+			train_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch)
+			train_on_games_with_descriptions(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch,pctdescriptions=0.2)
+		    else:
+			train_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch)
+			train_on_games_with_descriptions(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch,pctdescriptions=0.2)
 
 		    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
-		    print "basic_Q_net average w/d/l:",temp
-		    basic_score_track.append(temp)
+		    print "basic_Q_net random opponent average w/d/l:",temp
+		    basic_opp_random_score_track.append(temp)
 		    temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
-		    print "descr_Q_net average w/d/l:",temp
-		    descr_score_track.append(temp)
+		    print "descr_Q_net random opponent average w/d/l:",temp
+		    descr_opp_random_score_track.append(temp)
+		    temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
+		    print "basic_Q_net optimal opponent average w/d/l:",temp
+		    basic_opp_optimal_score_track.append(temp)
+		    temp = test_on_games(descr_Q_net,optimal_opponent,numgames=1000)
+		    print "descr_Q_net optimal opponent average w/d/l:",temp
+		    descr_opp_optimal_score_track.append(temp)
 #		    temp = test_descriptions(descr_Q_net,descr_test_data)
 #		    descr_descr_MSE_track.append(temp)
 		    
@@ -490,18 +597,28 @@ for pretraining_condition in pretraining_conditions:
 		sess.close()
 		tf.reset_default_graph()
 
-		avg_basic_score_track += numpy.array(basic_score_track)
-		avg_descr_score_track += numpy.array(descr_score_track)
+		avg_basic_opp_random_score_track += numpy.array(basic_opp_random_score_track)
+		avg_descr_opp_random_score_track += numpy.array(descr_opp_random_score_track)
+		avg_basic_opp_optimal_score_track += numpy.array(basic_opp_optimal_score_track)
+		avg_descr_opp_optimal_score_track += numpy.array(descr_opp_optimal_score_track)
 #		avg_descr_descr_MSE_track += numpy.array(descr_descr_MSE_track)
-	        numpy.savetxt('descr_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),descr_score_track,delimiter=',')
-	        numpy.savetxt('basic_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),basic_score_track,delimiter=',')
+	        numpy.savetxt('descr_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),descr_opp_random_score_track,delimiter=',')
+	        numpy.savetxt('basic_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),basic_opp_random_score_track,delimiter=',')
+	        numpy.savetxt('descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),descr_opp_optimal_score_track,delimiter=',')
+	        numpy.savetxt('basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),basic_opp_optimal_score_track,delimiter=',')
 
 
 		
-	    avg_basic_score_track = avg_basic_score_track/num_runs_per
-	    avg_descr_score_track = avg_descr_score_track/num_runs_per
+	    avg_basic_opp_random_score_track = avg_basic_opp_random_score_track/num_runs_per
+	    avg_descr_opp_random_score_track = avg_descr_opp_random_score_track/num_runs_per
  
-	    numpy.savetxt('avg_descr_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_descr_score_track,delimiter=',')
-	    numpy.savetxt('avg_basic_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_basic_score_track,delimiter=',')
+	    numpy.savetxt('avg_descr_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_descr_opp_random_score_track,delimiter=',')
+	    numpy.savetxt('avg_basic_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_basic_opp_random_score_track,delimiter=',')
+
+	    avg_basic_opp_optimal_score_track = avg_basic_opp_optimal_score_track/num_runs_per
+	    avg_descr_opp_optimal_score_track = avg_descr_opp_optimal_score_track/num_runs_per
+ 
+	    numpy.savetxt('avg_descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_descr_opp_optimal_score_track,delimiter=',')
+	    numpy.savetxt('avg_basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_basic_opp_optimal_score_track,delimiter=',')
 #	    numpy.savetxt('avg_descr_descr_MSE_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_descr_MSE_track,delimiter=',')
 
