@@ -6,7 +6,7 @@ import numpy
 
 learning_rates = [0.0005,0.005,0.001]
 learning_rate_decays = [0.8]
-pretraining_conditions = [False,True]
+pretraining_conditions = [True,False]
 num_runs_per = 50
 
 
@@ -19,12 +19,12 @@ k = 3 #number in row to win,
 #####network/learning parameters###############
 nhidden = 40
 nhiddendescriptor = 20
-descriptor_output_size = (n+n+2)+(4) #(position: n rows + n columns + 2 diagonals) + (interesting state: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) TODO: include other useful feature descriptors, e.g. "forks"
+descriptor_output_size = (n+n+2)+(4)+(2) #(position: n rows + n columns + 2 diagonals) + (interesting state in this location: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) + (interesting state anywhere: fork for me, fork for him) TODO: include other useful feature descriptors
 discount_factor = 0.8
 #eta = 0.005
 description_eta = 0.0005
 #eta_decay = 0.8 #Multiplicative decay per epoch
-description_eta_decay = 0.7 #Multiplicative decay per epoch
+description_eta_decay = 0.8 #Multiplicative decay per epoch
 nepochs = 20
 games_per_epoch = 100
 ###############################################
@@ -52,44 +52,69 @@ def reward(state):
 #(position: n rows + n columns + 2 diagonals) * (interesting state: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) TODO: include other useful feature descriptors, e.g. "forks"
 def description_target(state): #helper, generates description target for a given state
     target = []
+    fork_state = [oppfork(-state),oppfork(state)]
     for i in xrange(n):
 	target.extend([1 if i == j else -1 for j in xrange(n+n+2)])
 	if numpy.sum(state[i,:]) == 3:
-	    target.extend([1,-1,-1,-1])	
+	    target.extend([1,-1,-1,-1,-1,-1])	
 	elif numpy.sum(state[i,:]) == -3:
-	    target.extend([-1,1,-1,-1])	
+	    target.extend([-1,1,-1,-1,-1,-1])	
 	elif numpy.sum(state[i,:]) == 2:
 	    target.extend([-1,-1,1,-1])	
+	    if oppfork(-state):
+		target.extend([1,-1]) #Include fork information if this is involved
+	    else:
+		target.extend([-1,-1]) #Include fork information if this is involved
 	elif numpy.sum(state[i,:]) == -2:
 	    target.extend([-1,-1,-1,1])	
+	    if oppfork(state):
+		target.extend([-1,1]) #Include fork information if this is involved
+	    else:
+		target.extend([-1,-1]) #Include fork information if this is involved
 	else:
-	    target.extend([-1,-1,-1,-1])	
+	    target.extend([-1,-1,-1,-1,-1,-1])	
     for i in xrange(n):
 	target.extend([1 if i == j-3 else -1 for j in xrange(n+n+2)])
 	if numpy.sum(state[:,i]) == 3:
-	    target.extend([1,-1,-1,-1])	
+	    target.extend([1,-1,-1,-1,-1,-1])	
 	elif numpy.sum(state[:,i]) == -3:
-	    target.extend([-1,1,-1,-1])	
+	    target.extend([-1,1,-1,-1,-1,-1])	
 	elif numpy.sum(state[:,i]) == 2:
 	    target.extend([-1,-1,1,-1])	
+	    if oppfork(-state):
+		target.extend([1,-1]) #Include fork information if this is involved
+	    else:
+		target.extend([-1,-1]) #Include fork information if this is involved
 	elif numpy.sum(state[:,i]) == -2:
 	    target.extend([-1,-1,-1,1])	
+	    if oppfork(state):
+		target.extend([-1,1]) #Include fork information if this is involved
+	    else:
+		target.extend([-1,-1]) #Include fork information if this is involved
 	else:
-	    target.extend([-1,-1,-1,-1])	
+	    target.extend([-1,-1,-1,-1,-1,-1])	
     diag = [numpy.diag(state),numpy.diag(numpy.fliplr(state))]
     for i in xrange(2):
 	d = diag[i]
 	target.extend([1 if i == j-6 else -1 for j in xrange(n+n+2)])
 	if numpy.sum(d) == 3:
-	    target.extend([1,-1,-1,-1])	
+	    target.extend([1,-1,-1,-1,-1,-1])	
 	elif numpy.sum(d) == -3:
-	    target.extend([-1,1,-1,-1])	
+	    target.extend([-1,1,-1,-1,-1,-1])	
 	elif numpy.sum(d) == 2:
 	    target.extend([-1,-1,1,-1])	
+	    if oppfork(-state):
+		target.extend([1,-1]) #Include fork information if this is involved
+	    else:
+		target.extend([-1,-1]) #Include fork information if this is involved
 	elif numpy.sum(d) == -2:
 	    target.extend([-1,-1,-1,1])	
+	    if oppfork(state):
+		target.extend([-1,1]) #Include fork information if this is involved
+	    else:
+		target.extend([-1,-1]) #Include fork information if this is involved
 	else:
-	    target.extend([-1,-1,-1,-1])	
+	    target.extend([-1,-1,-1,-1,-1,-1])	
     target = numpy.array(target)
     return target.reshape(8,descriptor_output_size)
 
@@ -211,13 +236,12 @@ def optimal_opponent(state):
 	    if numpy.sum(rowsum == 1) == 1 and numpy.sum(colsum == 1) == 1: #If both plays are on center edge, adjacent 
 		selection = numpy.outer(rowsum == 1,colsum == 1) 
 	    elif numpy.sum(rowsum == -1) == 1 and numpy.sum(colsum == -1) == 1: #If both plays are on corners, and must be opposite or would have been caught above 
-		if newstate[0,0] == 1:
-		    selection = [(0,2),(2,0)][numpy.random.randint(2)]
-		else:
-		    selection = [(0,0),(2,2)][numpy.random.randint(2)]
-	    else: #opposite center edges, just loses to any corner play 
-		selection = [(0,0),(0,2),(2,2),(2,0)][numpy.random.randint(4)] #play in random corner
-		
+		selection = [(0,1),(1,0),(2,1),(1,2)][numpy.random.randint(4)]
+	    else: #opposite center edges or one center one corner  
+		if (rowsum[0] == 0 and rowsum[2] == 0) or (colsum[0] == 0 and colsum[2] == 0): #opposite center edges
+		    selection = [(0,0),(0,2),(2,2),(2,0)][numpy.random.randint(4)] #play in random corner
+		else: #one center one corner: play between
+		    selection = numpy.outer(rowsum == 1,colsum == 1)*(state == 0) 
 	else: #Opponent holds center, and must have played in opposite corner from us, or we would have blocked. Take another corner and then plays will be forced from there
 		selection = [x for x in [(0,0),(0,2),(2,0),(2,2)] if state[x] == 0][numpy.random.randint(2)]
     else: #If fifth play or above and nothing to block or win
@@ -366,7 +390,7 @@ class Q_approx_and_descriptor(Q_approx):
     def describe(self,state,keep_prob=1.0): #Outputs estimated descriptions for the current state
 	this_description = []
 	for j in xrange(n+n+2):
-	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
+	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
 	    this_description.append(self.sess.run(self.description_output,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.keep_prob: keep_prob})) 
 	return 
 
@@ -376,7 +400,7 @@ class Q_approx_and_descriptor(Q_approx):
 	SSE = numpy.zeros((descriptor_output_size,1))
 	for j in xrange(n+n+2):
 	    this_description_target = state_full_description_target[j].reshape((descriptor_output_size,1))
-	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
+	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
 	    SSE += self.sess.run(self.description_error,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: keep_prob}) 
 	return SSE 
 
@@ -385,8 +409,8 @@ class Q_approx_and_descriptor(Q_approx):
 	boring_list = [] #list of places where nothing is happening, a few will be sampled at the end for balance 
 	for i in xrange(n+n+2):
 	    this_description_target = state_full_description_target[i].reshape((descriptor_output_size,1))
-	    if sum(this_description_target[-4:]) > -4:
-		this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],i).reshape((n+n+2+4,1))
+	    if sum(this_description_target[-6:]) > -6:
+		this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],i).reshape((descriptor_output_size,1))
 		self.sess.run(self.description_train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
 	    else:
 		boring_list.append(i)
@@ -395,7 +419,7 @@ class Q_approx_and_descriptor(Q_approx):
 	boring_list = numpy.random.permutation(boring_list)[:n+n+2-len(boring_list)]
 	for j in boring_list:
 	    this_description_target = state_full_description_target[j].reshape((descriptor_output_size,1))
-	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((n+n+2+4,1))
+	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
 	    self.sess.run(self.description_train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
 	    
 	    
@@ -437,7 +461,6 @@ def play_game(Q_net,opponent,train=False,description_train=False,verbose=False):
 	if description_train and (unblockedopptwo(state) or unblockedopptwo(-state) or threeinrow(state) or threeinrow(-state)):
 	    Q_net.train_description(state)	
 	i += 1
-
     if threeinrow(state):
 	return 1
     if threeinrow(-state) or unblockedopptwo(state):
@@ -515,8 +538,8 @@ for pretraining_condition in pretraining_conditions:
 
 		if pretraining_condition:
 		    #description data creation
-		    descr_train_data = generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000)
-		descr_test_data = generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000)
+		    descr_train_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000),generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),500) )) 
+		descr_test_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000), generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),500) ))
 
 
 
@@ -566,12 +589,12 @@ for pretraining_condition in pretraining_conditions:
 		    print "training epoch %i" %i
 		    
 		    #Mini curriculum
-		    if (i < nepochs//2) or (i % 2 == 0):
+		    if (i < 5) or (i % 2 == 0):
 			train_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch)
 			train_on_games_with_descriptions(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch,pctdescriptions=0.2)
 		    else:
-			train_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch)
-			train_on_games_with_descriptions(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch,pctdescriptions=0.2)
+			train_on_games(basic_Q_net,optimal_opponent,numgames=games_per_epoch)
+			train_on_games_with_descriptions(descr_Q_net,optimal_opponent,numgames=games_per_epoch,pctdescriptions=0.2)
 
 		    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
 		    print "basic_Q_net random opponent average w/d/l:",temp
