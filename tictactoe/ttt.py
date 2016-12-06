@@ -4,8 +4,8 @@ import numpy
 
 ####Testing parameters###############
 
-learning_rates = [0.0005,0.005,0.001]
-learning_rate_decays = [0.8]
+learning_rates = [0.01,0.001,0.0005,0.0001]
+learning_rate_decays = [0.7,0.6,0.8]
 pretraining_conditions = [True,False]
 num_runs_per = 50
 
@@ -17,16 +17,20 @@ k = 3 #number in row to win,
 #NOTE: code does not actually implement arbitrary k/n at the moment.
 
 #####network/learning parameters###############
-nhidden = 40
+nhidden = 80
 nhiddendescriptor = 20
 descriptor_output_size = (n+n+2)+(4)+(2) #(position: n rows + n columns + 2 diagonals) + (interesting state in this location: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) + (interesting state anywhere: fork for me, fork for him) TODO: include other useful feature descriptors
 discount_factor = 0.8
 #eta = 0.005
-description_eta = 0.0005
+#description_eta = 0.0001
 #eta_decay = 0.8 #Multiplicative decay per epoch
-description_eta_decay = 0.8 #Multiplicative decay per epoch
+description_eta_decay = 0.7 #Multiplicative decay per epoch
 nepochs = 20
 games_per_epoch = 100
+
+#for replay buffer NOTE:Using replay buffer forces description_eta = eta whenever training on games
+use_replay_buffer = True
+games_per_gradient = 2
 ###############################################
 
 def threeinrow(state): #helper, expects state to be in square shape, only looks for positive 3 in row
@@ -316,9 +320,17 @@ class Q_approx(object):
 	    self.b4 = tf.Variable(initialized_stuff['b4'].initialized_value())
 	self.keep_prob = tf.placeholder(tf.float32) 
 	self.output = tf.nn.tanh(tf.matmul(self.W4,tf.nn.tanh(tf.matmul(self.W3,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W2,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W1,self.input_ph)+self.b1),keep_prob=self.keep_prob))+self.b2),keep_prob=self.keep_prob))+self.b3))+self.b4)
+	self.var_list = [self.W1,self.W2,self.W3,self.W4,self.b1,self.b2,self.b3,self.b4] #bookkeeping for gradients
 	self.error = tf.square(self.output-self.target_ph)
 	self.eta = tf.placeholder(tf.float32) 
-	self.optimizer = tf.train.AdamOptimizer(self.eta)
+	self.optimizer = tf.train.GradientDescentOptimizer(self.eta)
+	self.train_gradients_and_vars = self.optimizer.compute_gradients(tf.reduce_sum(self.error))
+	self.get_train_gradients = [g for (g,v) in self.train_gradients_and_vars]	
+	self.get_train_variables = [v for (g,v) in self.train_gradients_and_vars]
+	self.placeholder_gradients = []
+	for grad_var in self.var_list:
+	    self.placeholder_gradients.append((tf.placeholder('float', shape=grad_var.get_shape()) ,grad_var))
+	self.apply_gradients = self.optimizer.apply_gradients(self.placeholder_gradients)
 	self.train = self.optimizer.minimize(tf.reduce_sum(self.error))
 	self.epsilon = 0.1 #epsilon greedy
 	self.curr_eta = eta
@@ -330,7 +342,7 @@ class Q_approx(object):
     def Q(self,state,keep_prob=1.0): #Outputs estimated Q-value for each move in this state
 	return self.sess.run(self.output,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.keep_prob: keep_prob})  
 
-    def train_Q(self,state):
+    def train_Q(self,state,replay_buffer):
 	curr = self.Q(state,keep_prob=0.5)	
 	if numpy.random.rand() > self.epsilon:
 	    curr_legal = numpy.copy(curr) 
@@ -346,19 +358,23 @@ class Q_approx(object):
 	    curr[selection] = this_reward 
 	else:
 	    curr[selection] = this_reward+discount_factor*max(self.Q(new_state))
-	self.sess.run(self.train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.target_ph: curr,self.keep_prob: 0.5,self.eta: self.curr_eta}) 
-	return new_state
+	if replay_buffer:
+	    gradients = zip(self.sess.run(self.get_train_gradients,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.target_ph: curr,self.keep_prob: 0.5,self.eta: self.curr_eta}),self.get_train_variables) 
+	    return new_state,[gradients]
+	else:
+	    self.sess.run(self.train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.target_ph: curr,self.keep_prob: 0.5,self.eta: self.curr_eta}) 
+	    return new_state
 
-    def Q_move(self,state,train=False): #Executes a move and returns the new state. Replaces illegal moves with random legal moves
+    def Q_move(self,state,train=False,replay_buffer=False): #Executes a move and returns the new state. Replaces illegal moves with random legal moves
 	if train:
-	    new_state = self.train_Q(state)		
+	    results = self.train_Q(state,replay_buffer)		
 	else:
 	    curr = self.Q(state,keep_prob = 1.0)	
 	    curr_legal = numpy.copy(curr) 
 	    curr_legal[numpy.reshape(state,(9,1)) != 0] = -numpy.inf #Filter out illegal moves
 	    selection = numpy.argmax(curr_legal) #only selects legal moves
-	    new_state = update_state(state,selection)
-	return new_state
+	    results = update_state(state,selection)
+	return results
 
 
 class Q_approx_and_descriptor(Q_approx):
@@ -383,9 +399,21 @@ class Q_approx_and_descriptor(Q_approx):
 	    self.W4d = tf.Variable(initialized_stuff['W4d'].initialized_value())
 	    self.b4d = tf.Variable(initialized_stuff['b4d'].initialized_value())
 	self.description_output = tf.nn.tanh(tf.matmul(self.W4d,tf.nn.tanh(tf.matmul(self.W3d,tf.concat(0,(tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W2,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W1,self.input_ph)+self.b1),keep_prob=self.keep_prob))+self.b2),keep_prob=self.keep_prob),self.description_input_ph)))+self.b3d))+self.b4d)
+	self.var_list = [self.W1,self.W2,self.W3,self.W4,self.W3d,self.W4d,self.b1,self.b2,self.b3,self.b4,self.b3d,self.b4d] #bookkeeping for gradients
 	self.description_error = tf.square(self.description_output-self.description_target_ph)
 	self.description_train = self.optimizer.minimize(tf.reduce_sum(self.description_error))
+	self.train_gradients_and_vars = self.optimizer.compute_gradients(tf.reduce_sum(self.error),var_list=self.var_list)
+	self.get_train_gradients = [g for (g,v) in self.train_gradients_and_vars if g is not None]
+	self.get_train_variables = [v for (g,v) in self.train_gradients_and_vars if g is not None]
+	self.description_train_gradients_and_vars = self.optimizer.compute_gradients(tf.reduce_sum(self.description_error),var_list=self.var_list)
+	self.get_description_train_gradients = [g for (g,v) in self.description_train_gradients_and_vars if g is not None]
+	self.get_description_train_variables = [v  for (g,v) in self.description_train_gradients_and_vars if g is not None]
+	self.placeholder_gradients = []
+	for grad_var in self.var_list:
+	    self.placeholder_gradients.append((tf.placeholder('float', shape=grad_var.get_shape()) ,grad_var))
+	self.apply_gradients = self.optimizer.apply_gradients(self.placeholder_gradients)
 	self.curr_description_eta = description_eta
+
 
     def describe(self,state,keep_prob=1.0): #Outputs estimated descriptions for the current state
 	this_description = []
@@ -404,14 +432,18 @@ class Q_approx_and_descriptor(Q_approx):
 	    SSE += self.sess.run(self.description_error,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: keep_prob}) 
 	return SSE 
 
-    def train_description(self,state): #right now, only trains on describing events given locations TODO: also include picking locations for events, but need to handle multiple occurrences
+    def train_description(self,state,replay_buffer=False): #right now, only trains on describing events given locations TODO: also include picking locations for events, but need to handle multiple occurrences
 	state_full_description_target = description_target(state)
 	boring_list = [] #list of places where nothing is happening, a few will be sampled at the end for balance 
+	gradients = []
 	for i in xrange(n+n+2):
 	    this_description_target = state_full_description_target[i].reshape((descriptor_output_size,1))
 	    if sum(this_description_target[-6:]) > -6:
 		this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],i).reshape((descriptor_output_size,1))
-		self.sess.run(self.description_train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
+		if replay_buffer:
+		    gradients.append(zip(self.sess.run(self.get_description_train_gradients,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_description_train_variables)) 
+		else:
+		    self.sess.run(self.description_train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
 	    else:
 		boring_list.append(i)
 	    
@@ -420,9 +452,27 @@ class Q_approx_and_descriptor(Q_approx):
 	for j in boring_list:
 	    this_description_target = state_full_description_target[j].reshape((descriptor_output_size,1))
 	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
-	    self.sess.run(self.description_train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
+	    if replay_buffer:
+		gradients.append(zip(self.sess.run(self.get_description_train_gradients,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_description_train_variables))
+	    else:
+		self.sess.run(self.description_train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
+
+	return gradients
 	    
 	    
+def combine_gradients(gradients):
+    """Computes the mean of the provided gradients by variable, returns as a dict"""
+    mean_gradients = {}
+    for these_grads in gradients:
+	for grad,var in these_grads:
+	    if var in mean_gradients.keys():
+		mean_gradients[var] += grad 
+	    else:
+		mean_gradients[var] = grad
+    
+    for var in mean_gradients.keys():
+	mean_gradients[var] /= float(len(gradients))
+    return mean_gradients
 
 #####Data generation#####################
 
@@ -448,29 +498,57 @@ def generate(generator,condition,n):
 	    data.append(this_point)
     return data
 
-
-def play_game(Q_net,opponent,train=False,description_train=False,verbose=False):
+    
+def play_game(Q_net,opponent,train=False,description_train=False,replay_buffer=False):
     gofirst = numpy.random.randint(0,2)
     state = numpy.zeros((3,3))
     i = 0
+    gradients = []
     while not (catsgame(state) or threeinrow(state) or threeinrow(-state)):
 	if i % 2 == gofirst:
 	    state = opponent(state)
 	else: 
-	    state = Q_net.Q_move(state,train=train) 	    
+	    if replay_buffer:
+		(state,these_gradients) = Q_net.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		gradients.extend(these_gradients)
+	    else:
+		state = Q_net.Q_move(state,train=train,replay_buffer=replay_buffer)  
 	if description_train and (unblockedopptwo(state) or unblockedopptwo(-state) or threeinrow(state) or threeinrow(-state)):
-	    Q_net.train_description(state)	
+	    gradients.extend(Q_net.train_description(state,replay_buffer=replay_buffer))
 	i += 1
+    reward = 0
     if threeinrow(state):
-	return 1
-    if threeinrow(-state) or unblockedopptwo(state):
-	return -1
-    return 0
+	reward = 1
+    elif threeinrow(-state) or unblockedopptwo(state):
+	reward = -1
+    if replay_buffer: 
+	return reward,gradients
+    else:
+	return reward
 
-def train_on_games(Q_net,opponent,numgames=1000):
+
+def train_on_games(Q_net,opponents,numgames=1000,replay_buffer=False):
     score = 0
+    num_opponents = len(opponents)
+    gradients = []
     for game in xrange(numgames):
-	score += play_game(Q_net,opponent,train=True)
+	if replay_buffer:
+	    (this_score,these_gradients) = play_game(Q_net,opponents[game % num_opponents],train=True,replay_buffer=replay_buffer)
+	    score += this_score
+	    gradients.extend(these_gradients)
+	    if game % games_per_gradient == 0:
+		combined_gradients = combine_gradients(gradients)
+		this_feed_dict = {Q_net.keep_prob: 0.5,Q_net.eta: Q_net.curr_eta}
+		for i, grad_var in enumerate(Q_net.var_list):
+		    if grad_var in combined_gradients.keys():
+			this_feed_dict[Q_net.placeholder_gradients[i][0]] = combined_gradients[grad_var]
+		    else:
+			this_feed_dict[Q_net.placeholder_gradients[i][0]] = None
+	    
+		Q_net.sess.run(Q_net.apply_gradients,feed_dict=this_feed_dict)
+		gradients = [] 
+	else:
+	    score += play_game(Q_net,opponents[game % num_opponents],train=True,replay_buffer=replay_buffer)
     return  (float(score)/numgames) 
 
 def test_on_games(Q_net,opponent,numgames=1000):
@@ -501,13 +579,30 @@ def test_descriptions(Q_net,data_set):
     print "Description MSE = %f" %(descr_MSE/len(data_set)) 
     return descr_MSE/len(data_set)
 
-    
-def train_on_games_with_descriptions(Q_net,opponent,numgames=1000,pctdescriptions=0.2):
+def train_on_games_with_descriptions(Q_net,opponents,numgames=1000,pctdescriptions=0.2,replay_buffer=False):
     description_step = numgames*pctdescriptions
     score = 0
+    num_opponents = len(opponents)
+    gradients = []
     for game in xrange(numgames):
-	score += play_game(Q_net,opponent,train=True,description_train=((game%description_step)==0))
+	if replay_buffer:
+	    (this_score,these_gradients) = play_game(Q_net,opponents[game % num_opponents],train=True,description_train=((game%description_step)==0),replay_buffer=replay_buffer)
+	    score += this_score
+	    gradients.extend(these_gradients)
+	    if game % games_per_gradient == 0:
+		combined_gradients = combine_gradients(gradients)
+		this_feed_dict = {Q_net.keep_prob: 0.5,Q_net.eta: Q_net.curr_eta}
+		for i, grad_var in enumerate(Q_net.var_list):
+		    if grad_var in combined_gradients.keys():
+			this_feed_dict[Q_net.placeholder_gradients[i][0]] = combined_gradients[grad_var]
+		    else:
+			this_feed_dict[Q_net.placeholder_gradients[i][0]] = numpy.zeros(grad_var.get_shape()) #If this variable is irrelevant, no updates
+		Q_net.sess.run(Q_net.apply_gradients,feed_dict=this_feed_dict)
+		gradients = [] 
+	else:
+	    score += play_game(Q_net,opponents[game % num_opponents],train=True,description_train=((game%description_step)==0),replay_buffer=replay_buffer)
     return  (float(score)/numgames) 
+    
 
 for pretraining_condition in pretraining_conditions:
     for eta in learning_rates:
@@ -549,10 +644,10 @@ for pretraining_condition in pretraining_conditions:
 		descr_opp_optimal_score_track = []
 		basic_opp_optimal_score_track = []
 
-#		print "Description initial test (descr_Q_net):"
-#		temp = test_descriptions(descr_Q_net,descr_test_data)
-#		print temp
-#		descr_descr_MSE_track.append(temp)
+		print "Description initial test (descr_Q_net):"
+		temp = test_descriptions(descr_Q_net,descr_test_data)
+		print temp
+		descr_descr_MSE_track.append(temp)
 		print "Initial test (basic_Q_net, random opponent):"
 		temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
 		print temp
@@ -588,13 +683,8 @@ for pretraining_condition in pretraining_conditions:
 		for i in xrange(nepochs):
 		    print "training epoch %i" %i
 		    
-		    #Mini curriculum
-		    if (i < 5) or (i % 2 == 0):
-			train_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch)
-			train_on_games_with_descriptions(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=games_per_epoch,pctdescriptions=0.2)
-		    else:
-			train_on_games(basic_Q_net,optimal_opponent,numgames=games_per_epoch)
-			train_on_games_with_descriptions(descr_Q_net,optimal_opponent,numgames=games_per_epoch,pctdescriptions=0.2)
+		    train_on_games(basic_Q_net,[single_move_foresight_unpredictable_opponent,optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
+		    train_on_games_with_descriptions(descr_Q_net,[single_move_foresight_unpredictable_opponent,optimal_opponent],numgames=games_per_epoch,pctdescriptions=0.2,replay_buffer=use_replay_buffer)
 
 		    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
 		    print "basic_Q_net random opponent average w/d/l:",temp
@@ -610,7 +700,10 @@ for pretraining_condition in pretraining_conditions:
 		    descr_opp_optimal_score_track.append(temp)
 #		    temp = test_descriptions(descr_Q_net,descr_test_data)
 #		    descr_descr_MSE_track.append(temp)
-		    
+#		    print "basic W1"
+#		    print basic_Q_net.sess.run(basic_Q_net.W1)
+#		    print "descr W1"
+#		    print descr_Q_net.sess.run(descr_Q_net.W1)
 
 		    if (i%2) == 1:
 			basic_Q_net.curr_eta *= eta_decay
