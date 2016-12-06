@@ -4,10 +4,13 @@ import numpy
 
 ####Testing parameters###############
 
-learning_rates = [0.02,0.005,0.0005,0.0001]
-learning_rate_decays = [0.7,0.6,0.8]
-pretraining_conditions = [True,False]
-num_runs_per = 50
+learning_rates = [0.05,0.01,0.02,0.005]
+learning_rate_decays = [0.7,0.8,0.6]
+pretraining_conditions = [True]
+num_runs_per = 20
+
+#lr 0.05, decay 0.7, pretrain True, replay false, epsilon = 0.2 - some success on optimal 
+#lr 0.05, decay 0.7, pretrain True, replay true (gpg = 1), epsilon = 0.2 - some success on optimal 
 
 
 #####data parameters###########################
@@ -17,20 +20,21 @@ k = 3 #number in row to win,
 #NOTE: code does not actually implement arbitrary k/n at the moment.
 
 #####network/learning parameters###############
-nhidden = 20
+nhidden = 30
 nhiddendescriptor = 20
 descriptor_output_size = (n+n+2)+(4)+(2) #(position: n rows + n columns + 2 diagonals) + (interesting state in this location: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) + (interesting state anywhere: fork for me, fork for him) TODO: include other useful feature descriptors
 discount_factor = 0.8
+epsilon = 0.2 #epsilon greedy
 #eta = 0.005
 #description_eta = 0.0001 #NOTE:Using replay buffer forces description_eta = eta whenever training on games with descriptions (because gradients are combined from both sources)
 #eta_decay = 0.8 #Multiplicative decay per epoch
 description_eta_decay = 0.7 #Multiplicative decay per epoch
 nepochs = 20
-games_per_epoch = 200
+games_per_epoch = 400
 
 #for replay buffer 
 use_replay_buffer = True
-games_per_gradient = 2
+games_per_gradient = 1
 ###############################################
 
 def threeinrow(state): #helper, expects state to be in square shape, only looks for positive 3 in row
@@ -332,7 +336,7 @@ class Q_approx(object):
 	    self.placeholder_gradients.append((tf.placeholder('float', shape=grad_var.get_shape()) ,grad_var))
 	self.apply_gradients = self.optimizer.apply_gradients(self.placeholder_gradients)
 	self.train = self.optimizer.minimize(tf.reduce_sum(self.error))
-	self.epsilon = 0.1 #epsilon greedy
+	self.epsilon = epsilon #epsilon greedy
 	self.curr_eta = eta
 	self.sess = None
 
@@ -649,10 +653,10 @@ for pretraining_condition in pretraining_conditions:
 		descr_opp_optimal_score_track = []
 		basic_opp_optimal_score_track = []
 
-#		print "Description initial test (descr_Q_net):"
-#		temp = test_descriptions(descr_Q_net,descr_test_data)
-#		print temp
-#		descr_descr_MSE_track.append(temp)
+		print "Description initial test (descr_Q_net):"
+		temp = test_descriptions(descr_Q_net,descr_test_data)
+		print temp
+		descr_descr_MSE_track.append(temp)
 		print "Initial test (basic_Q_net, random opponent):"
 		temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
 		print temp
@@ -675,9 +679,9 @@ for pretraining_condition in pretraining_conditions:
 		    ##Description pretraining
 #		    print "Pre-training descriptions..."
 		    train_descriptions(descr_Q_net,descr_train_data,epochs=1)
-		    print "Description test after pre-training (descr_Q_net):"
-		    temp = test_descriptions(descr_Q_net,descr_test_data)
-		    print temp
+#		    print "Description test after pre-training (descr_Q_net):"
+#		    temp = test_descriptions(descr_Q_net,descr_test_data)
+#		    print temp
 #		    descr_descr_MSE_track.append(temp)
 		else: #otherwise test without pre-training
 		    pass
@@ -688,8 +692,8 @@ for pretraining_condition in pretraining_conditions:
 		for i in xrange(nepochs):
 		    print "training epoch %i" %i
 		    
-		    train_on_games(basic_Q_net,[optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
-		    train_on_games_with_descriptions(descr_Q_net,[optimal_opponent],numgames=games_per_epoch,pctdescriptions=0.2,replay_buffer=use_replay_buffer)
+		    train_on_games(basic_Q_net,[random_opponent,optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
+		    train_on_games_with_descriptions(descr_Q_net,[random_opponent,optimal_opponent],numgames=games_per_epoch,pctdescriptions=0.2,replay_buffer=use_replay_buffer)
 
 		    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
 		    print "basic_Q_net random opponent average w/d/l:",temp
@@ -709,6 +713,8 @@ for pretraining_condition in pretraining_conditions:
 #		    print basic_Q_net.sess.run(basic_Q_net.W1)
 #		    print "descr W1"
 #		    print descr_Q_net.sess.run(descr_Q_net.W1)
+
+		    
 
 		    if (i%2) == 1:
 			basic_Q_net.curr_eta *= eta_decay
