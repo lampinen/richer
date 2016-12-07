@@ -3,10 +3,9 @@ import numpy
 #import matplotlib.pyplot as plot
 
 ####Testing parameters###############
-
-learning_rates = [0.05,0.01,0.02,0.005]
-learning_rate_decays = [0.7,0.8,0.6]
-pretraining_conditions = [True]
+learning_rates = [0.01,0.002,0.02]
+learning_rate_decays = [0.8,0.7]
+pretraining_conditions = [True,False]
 num_runs_per = 20
 
 #lr 0.05, decay 0.7, pretrain True, replay false, epsilon = 0.2 - some success on optimal 
@@ -20,10 +19,10 @@ k = 3 #number in row to win,
 #NOTE: code does not actually implement arbitrary k/n at the moment.
 
 #####network/learning parameters###############
-nhidden = 30
+nhidden = 100
 nhiddendescriptor = 20
 descriptor_output_size = (n+n+2)+(4)+(2) #(position: n rows + n columns + 2 diagonals) + (interesting state in this location: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) + (interesting state anywhere: fork for me, fork for him) TODO: include other useful feature descriptors
-discount_factor = 0.8
+discount_factor = 1.0 #for Q-learning
 epsilon = 0.2 #epsilon greedy
 #eta = 0.005
 #description_eta = 0.0001 #NOTE:Using replay buffer forces description_eta = eta whenever training on games with descriptions (because gradients are combined from both sources)
@@ -692,8 +691,8 @@ for pretraining_condition in pretraining_conditions:
 		for i in xrange(nepochs):
 		    print "training epoch %i" %i
 		    
-		    train_on_games(basic_Q_net,[random_opponent,optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
-		    train_on_games_with_descriptions(descr_Q_net,[random_opponent,optimal_opponent],numgames=games_per_epoch,pctdescriptions=0.2,replay_buffer=use_replay_buffer)
+		    train_on_games(basic_Q_net,[single_move_foresight_unpredictable_opponent,optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
+		    train_on_games_with_descriptions(descr_Q_net,[single_move_foresight_unpredictable_opponent,optimal_opponent],numgames=games_per_epoch,pctdescriptions=0.2,replay_buffer=use_replay_buffer)
 
 		    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
 		    print "basic_Q_net random opponent average w/d/l:",temp
