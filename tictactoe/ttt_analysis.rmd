@@ -16,16 +16,50 @@ load data
 
 
 ```{r}
-results_dir = 'results/firstrun/'
+results_dir = 'results/secondrun/'
 
-d = data.frame(epoch=c(),average_score=c(),pretrain=c(),eta=c(),learning=c())
+d = data.frame()
 
 for (pretrain in c('True','False')) {
-  for (eta in c('0.001000','0.005000','0.010000')) {
-    this_track = read.csv(sprintf('%savg_basic_score_track_pretrain-%s_eta-%s_eta_decay-0.800000.csv',results_dir,pretrain,eta),header=F)
-    d = rbind(d,data.frame(epoch=0:10,average_score=this_track$V1,pretrain=rep(pretrain,11),eta=rep(eta,11),learning=rep('basic',11)))
-    this_track = read.csv(sprintf('%savg_descr_score_track_pretrain-%s_eta-%s_eta_decay-0.800000.csv',results_dir,pretrain,eta),header=F)
-    d = rbind(d,data.frame(epoch=0:10,average_score=this_track$V1,pretrain=rep(pretrain,11),eta=rep(eta,11),learning=rep('descr',11)))
+  for (eta in c('0.050000','0.010000')) {
+    for (eta_decay in c('0.600000','0.70000','0.800000')) {
+      for (opponent in c('optimal','random')) {
+        if (!file.exists(sprintf('%savg_descr_opp_%s_score_track_pretrain-%s_eta-%s_eta_decay-%s.csv',results_dir,opponent,pretrain,eta,eta_decay))) {
+          print("Skipping...")
+          print(sprintf('%savg_descr_opp_%s_score_track_pretrain-%s_eta-%s_eta_decay-%s.csv',results_dir,opponent,pretrain,eta,eta_decay))
+          next
+        }
+        this_track = read.csv(sprintf('%savg_basic_opp_%s_score_track_pretrain-%s_eta-%s_eta_decay-%s.csv',results_dir,opponent,pretrain,eta,eta_decay),header=F)
+        d = rbind(d,data.frame(epoch=0:20,pct_wins=this_track$V1,pct_draws=this_track$V2,pct_losses=this_track$V3,pretrain=rep(pretrain,21),opponent=rep(opponent,21),eta=rep(eta,21),eta_decay=rep(eta_decay,21),learning=rep('basic',21)))
+        this_track = read.csv(sprintf('%savg_descr_opp_%s_score_track_pretrain-%s_eta-%s_eta_decay-%s.csv',results_dir,opponent,pretrain,eta,eta_decay),header=F)
+        d = rbind(d,data.frame(epoch=0:20,pct_wins=this_track$V1,pct_draws=this_track$V2,pct_losses=this_track$V3,pretrain=rep(pretrain,21),opponent=rep(opponent,21),eta=rep(eta,21),eta_decay=rep(eta_decay,21),learning=rep('descr',21)))
+      }
+    }
+  }
+}
+```
+
+```{r}
+
+full_d = data.frame()
+
+for (pretrain in c('True','False')) {
+  for (eta in c('0.050000','0.010000')) {
+    for (eta_decay in c('0.600000','0.70000','0.800000')) {
+      for (opponent in c('optimal','random')) {
+        for (run in 1:20) {
+          if (!file.exists(sprintf('%sdescr_opp_%s_score_track_pretrain-%s_eta-%s_eta_decay-%s_run-%i.csv',results_dir,opponent,pretrain,eta,eta_decay,run))) {
+            print("Skipping...")
+            print(sprintf('%sdescr_opp_%s_score_track_pretrain-%s_eta-%s_eta_decay-%s_run-%i.csv',results_dir,opponent,pretrain,eta,eta_decay,run))
+            next
+          }
+          this_track = read.csv(sprintf('%sbasic_opp_%s_score_track_pretrain-%s_eta-%s_eta_decay-%s_run-%i.csv',results_dir,opponent,pretrain,eta,eta_decay,run),header=F)
+          full_d = rbind(full_d,data.frame(epoch=0:20,pct_wins=this_track$V1,pct_draws=this_track$V2,pct_losses=this_track$V3,pretrain=rep(pretrain,21),opponent=rep(opponent,21),eta=rep(eta,21),eta_decay=rep(eta_decay,21),learning=rep('basic',21),run=rep(run,21)))
+          this_track = read.csv(sprintf('%sdescr_opp_%s_score_track_pretrain-%s_eta-%s_eta_decay-%s_run-%i.csv',results_dir,opponent,pretrain,eta,eta_decay,run),header=F)
+          full_d = rbind(full_d,data.frame(epoch=0:20,pct_wins=this_track$V1,pct_draws=this_track$V2,pct_losses=this_track$V3,pretrain=rep(pretrain,21),opponent=rep(opponent,21),eta=rep(eta,21),eta_decay=rep(eta_decay,21),learning=rep('descr',21),run=rep(run,21)))
+        }
+      }
+    }
   }
 }
 ```
@@ -33,11 +67,38 @@ for (pretrain in c('True','False')) {
 
 plot data 
 ------------
+```{r}
+theme_set(theme_bw(base_size=20))
+```
 
 ```{r}
-ggplot(data=d,aes(x=epoch,y=average_score,color=learning)) +
+optimal_data = d %>% filter(opponent == 'optimal')
+ggplot(data=optimal_data,aes(x=epoch,y=pct_draws,color=learning)) +
   geom_line() +
-  facet_grid(pretrain ~ eta) +
+  facet_grid(eta_decay ~ eta) +
   theme_bw()
 ```
 
+```{r}
+random_data = d %>% filter(opponent == 'random')
+ggplot(data=random_data,aes(x=epoch,y=pct_wins,color=learning)) +
+  geom_line() +
+  facet_grid(eta_decay ~ eta) +
+  theme_bw()
+```
+
+```{r}
+optimal_max_data = full_d %>% filter(opponent == 'optimal') %>% group_by(epoch,learning,eta,eta_decay) %>% summarize(pct_draws = max(pct_draws))
+ggplot(data=optimal_max_data,aes(x=epoch,y=pct_draws,color=learning)) +
+  geom_line() +
+  facet_grid(eta_decay ~ eta) +
+  theme_bw()
+```
+
+```{r}
+random_max_data = full_d %>% filter(opponent == 'random') %>% group_by(epoch,learning,eta,eta_decay) %>% summarize(pct_wins = max(pct_wins),pct_draws = max(pct_draws))
+ggplot(data=random_max_data,aes(x=epoch,y=pct_wins,color=learning)) +
+  geom_line() +
+  facet_grid(eta_decay ~ eta) +
+  theme_bw()
+```
