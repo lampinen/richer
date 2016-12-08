@@ -3,8 +3,8 @@ import numpy
 #import matplotlib.pyplot as plot
 
 ####Testing parameters###############
-learning_rates = [0.01,0.002,0.02]
-learning_rate_decays = [0.8,0.7]
+learning_rates = [0.01,0.03,0.05]
+learning_rate_decays = [0.9,0.7]
 pretraining_conditions = [True,False]
 num_runs_per = 20
 
@@ -21,7 +21,7 @@ k = 3 #number in row to win,
 #####network/learning parameters###############
 nhidden = 100
 nhiddendescriptor = 20
-descriptor_output_size = (n+n+2)+(4)+(2) #(position: n rows + n columns + 2 diagonals) + (interesting state in this location: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) + (interesting state anywhere: fork for me, fork for him) TODO: include other useful feature descriptors
+descriptor_output_size = (n+n+2)+(4)+(1) #(position: n rows + n columns + 2 diagonals) + (interesting state in this location: 3 in row, unblocked 2 in row, for him, for me) + (if interesting, is it involved in a fork?) TODO: include other useful feature descriptors
 discount_factor = 1.0 #for Q-learning
 epsilon = 0.2 #epsilon greedy
 #eta = 0.005
@@ -29,11 +29,12 @@ epsilon = 0.2 #epsilon greedy
 #eta_decay = 0.8 #Multiplicative decay per epoch
 description_eta_decay = 0.7 #Multiplicative decay per epoch
 nepochs = 20
-games_per_epoch = 400
+games_per_epoch = 50
 
 #for replay buffer 
 use_replay_buffer = True
 games_per_gradient = 1
+assert((games_per_epoch % games_per_gradient) == 0)
 ###############################################
 
 def threeinrow(state): #helper, expects state to be in square shape, only looks for positive 3 in row
@@ -56,72 +57,72 @@ def reward(state):
 	return -1.
     return 0.
 
-#(position: n rows + n columns + 2 diagonals) * (interesting state: 3 in row for me, 3 in row for him, unblocked 2 in row for me, unblocked 2 in row for him) TODO: include other useful feature descriptors, e.g. "forks"
+#(position: n rows + n columns + 2 diagonals) + (interesting state in this location: 3 in row, unblocked 2 in row, for me, for him) + (if interesting, is it involved in a fork?) TODO: include other useful feature descriptors
 def description_target(state): #helper, generates description target for a given state
     target = []
     fork_state = [oppfork(-state),oppfork(state)]
     for i in xrange(n):
 	target.extend([1 if i == j else -1 for j in xrange(n+n+2)])
 	if numpy.sum(state[i,:]) == 3:
-	    target.extend([1,-1,-1,-1,-1,-1])	
+	    target.extend([1,-1,1,-1,-1])	
 	elif numpy.sum(state[i,:]) == -3:
-	    target.extend([-1,1,-1,-1,-1,-1])	
+	    target.extend([1,-1,-1,1,-1])	
 	elif numpy.sum(state[i,:]) == 2:
-	    target.extend([-1,-1,1,-1])	
+	    target.extend([-1,1,1,-1])	
 	    if oppfork(-state):
-		target.extend([1,-1]) #Include fork information if this is involved
+		target.extend([1]) #Include fork information if this is involved
 	    else:
-		target.extend([-1,-1]) #Include fork information if this is involved
+		target.extend([-1])
 	elif numpy.sum(state[i,:]) == -2:
-	    target.extend([-1,-1,-1,1])	
+	    target.extend([-1,1,-1,1])	
 	    if oppfork(state):
-		target.extend([-1,1]) #Include fork information if this is involved
+		target.extend([1]) #Include fork information if this is involved
 	    else:
-		target.extend([-1,-1]) #Include fork information if this is involved
+		target.extend([-1])
 	else:
-	    target.extend([-1,-1,-1,-1,-1,-1])	
+	    target.extend([-1,-1,-1,-1,-1])	
     for i in xrange(n):
 	target.extend([1 if i == j-3 else -1 for j in xrange(n+n+2)])
-	if numpy.sum(state[:,i]) == 3:
-	    target.extend([1,-1,-1,-1,-1,-1])	
-	elif numpy.sum(state[:,i]) == -3:
-	    target.extend([-1,1,-1,-1,-1,-1])	
-	elif numpy.sum(state[:,i]) == 2:
-	    target.extend([-1,-1,1,-1])	
+	if numpy.sum(state[i,:]) == 3:
+	    target.extend([1,-1,1,-1,-1])	
+	elif numpy.sum(state[i,:]) == -3:
+	    target.extend([1,-1,-1,1,-1])	
+	elif numpy.sum(state[i,:]) == 2:
+	    target.extend([-1,1,1,-1])	
 	    if oppfork(-state):
-		target.extend([1,-1]) #Include fork information if this is involved
+		target.extend([1]) #Include fork information if this is involved
 	    else:
-		target.extend([-1,-1]) #Include fork information if this is involved
-	elif numpy.sum(state[:,i]) == -2:
-	    target.extend([-1,-1,-1,1])	
+		target.extend([-1])
+	elif numpy.sum(state[i,:]) == -2:
+	    target.extend([-1,1,-1,1])	
 	    if oppfork(state):
-		target.extend([-1,1]) #Include fork information if this is involved
+		target.extend([1]) #Include fork information if this is involved
 	    else:
-		target.extend([-1,-1]) #Include fork information if this is involved
+		target.extend([-1])
 	else:
-	    target.extend([-1,-1,-1,-1,-1,-1])	
+	    target.extend([-1,-1,-1,-1,-1])	
     diag = [numpy.diag(state),numpy.diag(numpy.fliplr(state))]
     for i in xrange(2):
 	d = diag[i]
 	target.extend([1 if i == j-6 else -1 for j in xrange(n+n+2)])
 	if numpy.sum(d) == 3:
-	    target.extend([1,-1,-1,-1,-1,-1])	
+	    target.extend([1,-1,1,-1,-1])	
 	elif numpy.sum(d) == -3:
-	    target.extend([-1,1,-1,-1,-1,-1])	
+	    target.extend([-1,1,1,-1,-1])	
 	elif numpy.sum(d) == 2:
-	    target.extend([-1,-1,1,-1])	
+	    target.extend([-1,1,1,-1])	
 	    if oppfork(-state):
-		target.extend([1,-1]) #Include fork information if this is involved
+		target.extend([1]) #Include fork information if this is involved
 	    else:
-		target.extend([-1,-1]) #Include fork information if this is involved
+		target.extend([-1]) #Include fork information if this is involved
 	elif numpy.sum(d) == -2:
-	    target.extend([-1,-1,-1,1])	
+	    target.extend([-1,1,-1,1])	
 	    if oppfork(state):
-		target.extend([-1,1]) #Include fork information if this is involved
+		target.extend([1]) #Include fork information if this is involved
 	    else:
-		target.extend([-1,-1]) #Include fork information if this is involved
+		target.extend([-1]) #Include fork information if this is involved
 	else:
-	    target.extend([-1,-1,-1,-1,-1,-1])	
+	    target.extend([-1,-1,-1,-1,-1])	
     target = numpy.array(target)
     return target.reshape(8,descriptor_output_size)
 
@@ -617,15 +618,14 @@ for pretraining_condition in pretraining_conditions:
 	description_eta = eta
 	for eta_decay in learning_rate_decays:
 	    avg_descr_descr_MSE_track = numpy.zeros(nepochs+1)
-	    avg_descr_opp_random_score_track = numpy.zeros((nepochs+1,3))
-	    avg_basic_opp_random_score_track = numpy.zeros((nepochs+1,3))
+	    avg_descr_opp_single_move_foresight_unpredictable_score_track = numpy.zeros((nepochs+1,3))
+	    avg_basic_opp_single_move_foresight_unpredictable_score_track = numpy.zeros((nepochs+1,3))
 	    avg_descr_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
 	    avg_basic_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
 	    for run in xrange(num_runs_per):
 		print "pretrain-%s_eta-%f_eta_decay-%f_run-%i" %(str(pretraining_condition),eta,eta_decay,run)
-		tf.set_random_seed(run) 
-		numpy.random.seed(run)
-
+		tf.set_random_seed(run+1) 
+		numpy.random.seed(run+1)
 
 		initialized_stuff = {} #Dictionary to hold weights, etc., to share initilizations between network instantiations (for fair comparison)
 
@@ -647,8 +647,8 @@ for pretraining_condition in pretraining_conditions:
 
 
 		descr_descr_MSE_track = []
-		descr_opp_random_score_track = []
-		basic_opp_random_score_track = []
+		descr_opp_single_move_foresight_unpredictable_score_track = []
+		basic_opp_single_move_foresight_unpredictable_score_track = []
 		descr_opp_optimal_score_track = []
 		basic_opp_optimal_score_track = []
 
@@ -656,14 +656,14 @@ for pretraining_condition in pretraining_conditions:
 		temp = test_descriptions(descr_Q_net,descr_test_data)
 		print temp
 		descr_descr_MSE_track.append(temp)
-		print "Initial test (basic_Q_net, random opponent):"
-		temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
+		print "Initial test (basic_Q_net, single_move_foresight_unpredictable opponent):"
+		temp = test_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
 		print temp
-		basic_opp_random_score_track.append(temp)
-		print "Initial test (descr_Q_net, random):"
-		temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
+		basic_opp_single_move_foresight_unpredictable_score_track.append(temp)
+		print "Initial test (descr_Q_net, single_move_foresight_unpredictable):"
+		temp = test_on_games(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
 		print temp
-		descr_opp_random_score_track.append(temp)
+		descr_opp_single_move_foresight_unpredictable_score_track.append(temp)
 
 		print "Initial test (basic_Q_net, optimal opponent):"
 		temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
@@ -691,15 +691,19 @@ for pretraining_condition in pretraining_conditions:
 		for i in xrange(nepochs):
 		    print "training epoch %i" %i
 		    
-		    train_on_games(basic_Q_net,[single_move_foresight_unpredictable_opponent,optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
-		    train_on_games_with_descriptions(descr_Q_net,[single_move_foresight_unpredictable_opponent,optimal_opponent],numgames=games_per_epoch,pctdescriptions=0.2,replay_buffer=use_replay_buffer)
+		    #play_game(descr_Q_net,optimal_opponent,train=False,description_train=False,replay_buffer=False,display=True)
+		    #print descr_Q_net.Q_move(numpy.array([[1,0,-1],[0,-1,0],[0,0,1]])) 
 
-		    temp = test_on_games(basic_Q_net,random_opponent,numgames=1000)
-		    print "basic_Q_net random opponent average w/d/l:",temp
-		    basic_opp_random_score_track.append(temp)
-		    temp = test_on_games(descr_Q_net,random_opponent,numgames=1000)
-		    print "descr_Q_net random opponent average w/d/l:",temp
-		    descr_opp_random_score_track.append(temp)
+		    
+		    train_on_games(basic_Q_net,[optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
+		    train_on_games_with_descriptions(descr_Q_net,[optimal_opponent],numgames=games_per_epoch,pctdescriptions=0.2,replay_buffer=use_replay_buffer)
+
+		    temp = test_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
+		    print "basic_Q_net single_move_foresight_unpredictable opponent average w/d/l:",temp
+		    basic_opp_single_move_foresight_unpredictable_score_track.append(temp)
+		    temp = test_on_games(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
+		    print "descr_Q_net single_move_foresight_unpredictable opponent average w/d/l:",temp
+		    descr_opp_single_move_foresight_unpredictable_score_track.append(temp)
 		    temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
 		    print "basic_Q_net optimal opponent average w/d/l:",temp
 		    basic_opp_optimal_score_track.append(temp)
@@ -710,8 +714,6 @@ for pretraining_condition in pretraining_conditions:
 #		    descr_descr_MSE_track.append(temp)
 #		    print "basic W1"
 #		    print basic_Q_net.sess.run(basic_Q_net.W1)
-#		    print "descr W1"
-#		    print descr_Q_net.sess.run(descr_Q_net.W1)
 
 		    
 
@@ -723,23 +725,23 @@ for pretraining_condition in pretraining_conditions:
 		sess.close()
 		tf.reset_default_graph()
 
-		avg_basic_opp_random_score_track += numpy.array(basic_opp_random_score_track)
-		avg_descr_opp_random_score_track += numpy.array(descr_opp_random_score_track)
+		avg_basic_opp_single_move_foresight_unpredictable_score_track += numpy.array(basic_opp_single_move_foresight_unpredictable_score_track)
+		avg_descr_opp_single_move_foresight_unpredictable_score_track += numpy.array(descr_opp_single_move_foresight_unpredictable_score_track)
 		avg_basic_opp_optimal_score_track += numpy.array(basic_opp_optimal_score_track)
 		avg_descr_opp_optimal_score_track += numpy.array(descr_opp_optimal_score_track)
 #		avg_descr_descr_MSE_track += numpy.array(descr_descr_MSE_track)
-	        numpy.savetxt('descr_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),descr_opp_random_score_track,delimiter=',')
-	        numpy.savetxt('basic_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),basic_opp_random_score_track,delimiter=',')
+	        numpy.savetxt('descr_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),descr_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
+	        numpy.savetxt('basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
 	        numpy.savetxt('descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),descr_opp_optimal_score_track,delimiter=',')
 	        numpy.savetxt('basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),basic_opp_optimal_score_track,delimiter=',')
 
 
 		
-	    avg_basic_opp_random_score_track = avg_basic_opp_random_score_track/num_runs_per
-	    avg_descr_opp_random_score_track = avg_descr_opp_random_score_track/num_runs_per
+	    avg_basic_opp_single_move_foresight_unpredictable_score_track = avg_basic_opp_single_move_foresight_unpredictable_score_track/num_runs_per
+	    avg_descr_opp_single_move_foresight_unpredictable_score_track = avg_descr_opp_single_move_foresight_unpredictable_score_track/num_runs_per
  
-	    numpy.savetxt('avg_descr_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_descr_opp_random_score_track,delimiter=',')
-	    numpy.savetxt('avg_basic_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_basic_opp_random_score_track,delimiter=',')
+	    numpy.savetxt('avg_descr_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_descr_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
+	    numpy.savetxt('avg_basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
 
 	    avg_basic_opp_optimal_score_track = avg_basic_opp_optimal_score_track/num_runs_per
 	    avg_descr_opp_optimal_score_track = avg_descr_opp_optimal_score_track/num_runs_per
