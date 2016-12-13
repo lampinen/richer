@@ -3,9 +3,10 @@ import numpy
 #import matplotlib.pyplot as plot
 
 ####Testing parameters###############
-learning_rates = [0.01,0.03,0.05]
-learning_rate_decays = [0.9,0.7]
+learning_rates = [0.02]
+learning_rate_decays = [0.8]
 pretraining_conditions = [True,False]
+pct_description_conditions = [0.1,0.05,0.2]
 num_runs_per = 20
 
 #lr 0.05, decay 0.7, pretrain True, replay false, epsilon = 0.2 - some success on optimal 
@@ -294,10 +295,10 @@ initialized_stuff = {} #Dictionary to hold weights, etc., to share initilization
 class Q_approx(object):
     def __init__(self):
 	global initialized_stuff
-	self.input_ph = tf.placeholder(tf.float32, shape=[n*n*2,1])
+	self.input_ph = tf.placeholder(tf.float32, shape=[n*n,1])
 	self.target_ph = tf.placeholder(tf.float32, shape=[n*n,1])
 	if initialized_stuff == {}:
-	    self.W1 = tf.Variable(tf.random_normal([nhidden,n*n*2],0,0.1)) 
+	    self.W1 = tf.Variable(tf.random_normal([nhidden,n*n],0,0.1)) 
 	    self.b1 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
 	    self.W2 = tf.Variable(tf.random_normal([nhidden,nhidden],0,0.1))
 	    self.b2 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
@@ -344,7 +345,7 @@ class Q_approx(object):
 	self.sess = sess
 
     def Q(self,state,keep_prob=1.0): #Outputs estimated Q-value for each move in this state
-	return self.sess.run(self.output,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.keep_prob: keep_prob})  
+	return self.sess.run(self.output,feed_dict={self.input_ph: (state).reshape((9,1)),self.keep_prob: keep_prob})  
 
     def train_Q(self,state,replay_buffer):
 	curr = self.Q(state,keep_prob=0.5)	
@@ -363,10 +364,10 @@ class Q_approx(object):
 	else:
 	    curr[selection] = this_reward+discount_factor*max(self.Q(new_state))
 	if replay_buffer:
-	    gradients = zip(self.sess.run(self.get_train_gradients,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.target_ph: curr,self.keep_prob: 0.5,self.eta: self.curr_eta}),self.get_train_variables) 
+	    gradients = zip(self.sess.run(self.get_train_gradients,feed_dict={self.input_ph: (state).reshape((9,1)),self.target_ph: curr,self.keep_prob: 0.5,self.eta: self.curr_eta}),self.get_train_variables) 
 	    return new_state,[gradients]
 	else:
-	    self.sess.run(self.train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.target_ph: curr,self.keep_prob: 0.5,self.eta: self.curr_eta}) 
+	    self.sess.run(self.train,feed_dict={self.input_ph: (state).reshape((9,1)),self.target_ph: curr,self.keep_prob: 0.5,self.eta: self.curr_eta}) 
 	    return new_state
 
     def Q_move(self,state,train=False,replay_buffer=False): #Executes a move and returns the new state. Replaces illegal moves with random legal moves
@@ -422,8 +423,8 @@ class Q_approx_and_descriptor(Q_approx):
     def describe(self,state,keep_prob=1.0): #Outputs estimated descriptions for the current state
 	this_description = []
 	for j in xrange(n+n+2):
-	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
-	    this_description.append(self.sess.run(self.description_output,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.keep_prob: keep_prob})) 
+	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
+	    this_description.append(self.sess.run(self.description_output,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.keep_prob: keep_prob})) 
 	return 
 
 
@@ -432,8 +433,8 @@ class Q_approx_and_descriptor(Q_approx):
 	SSE = numpy.zeros((descriptor_output_size,1))
 	for j in xrange(n+n+2):
 	    this_description_target = state_full_description_target[j].reshape((descriptor_output_size,1))
-	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
-	    SSE += self.sess.run(self.description_error,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: keep_prob}) 
+	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
+	    SSE += self.sess.run(self.description_error,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: keep_prob}) 
 	return SSE 
 
     def train_description(self,state,replay_buffer=False): #right now, only trains on describing events given locations TODO: also include picking locations for events, but need to handle multiple occurrences
@@ -443,11 +444,11 @@ class Q_approx_and_descriptor(Q_approx):
 	for i in xrange(n+n+2):
 	    this_description_target = state_full_description_target[i].reshape((descriptor_output_size,1))
 	    if sum(this_description_target[-6:]) > -6:
-		this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],i).reshape((descriptor_output_size,1))
+		this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],i).reshape((descriptor_output_size,1))
 		if replay_buffer:
-		    gradients.append(zip(self.sess.run(self.get_description_train_gradients,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_description_train_variables)) 
+		    gradients.append(zip(self.sess.run(self.get_description_train_gradients,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_description_train_variables)) 
 		else:
-		    self.sess.run(self.description_train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
+		    self.sess.run(self.description_train,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
 	    else:
 		boring_list.append(i)
 	    
@@ -455,11 +456,11 @@ class Q_approx_and_descriptor(Q_approx):
 	boring_list = numpy.random.permutation(boring_list)[:n+n+2-len(boring_list)]
 	for j in boring_list:
 	    this_description_target = state_full_description_target[j].reshape((descriptor_output_size,1))
-	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
+	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
 	    if replay_buffer:
-		gradients.append(zip(self.sess.run(self.get_description_train_gradients,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_description_train_variables))
+		gradients.append(zip(self.sess.run(self.get_description_train_gradients,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_description_train_variables))
 	    else:
-		self.sess.run(self.description_train,feed_dict={self.input_ph: nbyn_input_to_2bynbyn_input(state).reshape((18,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
+		self.sess.run(self.description_train,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
 
 	return gradients
 	    
@@ -552,7 +553,7 @@ def train_on_games(Q_net,opponents,numgames=1000,replay_buffer=False):
 		    if grad_var in combined_gradients.keys():
 			this_feed_dict[Q_net.placeholder_gradients[i][0]] = combined_gradients[grad_var]
 		    else:
-			this_feed_dict[Q_net.placeholder_gradients[i][0]] = None
+			this_feed_dict[Q_net.placeholder_gradients[i][0]] = numpy.zeros(grad_var.get_shape()) #If this variable is irrelevant, no updates
 	    
 		Q_net.sess.run(Q_net.apply_gradients,feed_dict=this_feed_dict)
 		gradients = [] 
@@ -615,138 +616,141 @@ def train_on_games_with_descriptions(Q_net,opponents,numgames=1000,pctdescriptio
 
 for pretraining_condition in pretraining_conditions:
     for eta in learning_rates:
-	description_eta = eta
+	description_eta = 0.001
 	for eta_decay in learning_rate_decays:
-	    avg_descr_descr_MSE_track = numpy.zeros(nepochs+1)
-	    avg_descr_opp_single_move_foresight_unpredictable_score_track = numpy.zeros((nepochs+1,3))
-	    avg_basic_opp_single_move_foresight_unpredictable_score_track = numpy.zeros((nepochs+1,3))
-	    avg_descr_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
-	    avg_basic_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
-	    for run in xrange(num_runs_per):
-		print "pretrain-%s_eta-%f_eta_decay-%f_run-%i" %(str(pretraining_condition),eta,eta_decay,run)
-		tf.set_random_seed(run+1) 
-		numpy.random.seed(run+1)
+	    for pct_descriptions in pct_description_conditions:
+		avg_descr_descr_MSE_track = numpy.zeros(nepochs+1)
+		avg_descr_opp_single_move_foresight_unpredictable_score_track = numpy.zeros((nepochs+1,3))
+		avg_basic_opp_single_move_foresight_unpredictable_score_track = numpy.zeros((nepochs+1,3))
+		avg_descr_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
+		avg_basic_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
+		for run in xrange(num_runs_per):
+		    print "pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i" %(str(pretraining_condition),eta,eta_decay,pct_descriptions,run)
+		    tf.set_random_seed(run) 
+		    numpy.random.seed(run)
 
-		initialized_stuff = {} #Dictionary to hold weights, etc., to share initilizations between network instantiations (for fair comparison)
-
-
-		#network initialization
-		basic_Q_net = Q_approx()
-		descr_Q_net = Q_approx_and_descriptor()
-		sess = tf.Session()
-		basic_Q_net.set_TF_sess(sess)
-		descr_Q_net.set_TF_sess(sess)
-		sess.run(tf.initialize_all_variables())
+		    initialized_stuff = {} #Dictionary to hold weights, etc., to share initilizations between network instantiations (for fair comparison)
 
 
-		if pretraining_condition:
-		    #description data creation
-		    descr_train_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000),generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),500) )) 
-		descr_test_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000), generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),500) ))
+		    #network initialization
+		    basic_Q_net = Q_approx()
+		    descr_Q_net = Q_approx_and_descriptor()
+		    sess = tf.Session()
+		    basic_Q_net.set_TF_sess(sess)
+		    descr_Q_net.set_TF_sess(sess)
+		    sess.run(tf.initialize_all_variables())
+
+
+		    if pretraining_condition:
+			#description data creation
+			descr_train_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000),generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),1000) )) 
+		    descr_test_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000), generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),1000) ))
 
 
 
-		descr_descr_MSE_track = []
-		descr_opp_single_move_foresight_unpredictable_score_track = []
-		basic_opp_single_move_foresight_unpredictable_score_track = []
-		descr_opp_optimal_score_track = []
-		basic_opp_optimal_score_track = []
+		    descr_descr_MSE_track = []
+		    descr_opp_single_move_foresight_unpredictable_score_track = []
+		    basic_opp_single_move_foresight_unpredictable_score_track = []
+		    descr_opp_optimal_score_track = []
+		    basic_opp_optimal_score_track = []
 
-		print "Description initial test (descr_Q_net):"
-		temp = test_descriptions(descr_Q_net,descr_test_data)
-		print temp
-		descr_descr_MSE_track.append(temp)
-		print "Initial test (basic_Q_net, single_move_foresight_unpredictable opponent):"
-		temp = test_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
-		print temp
-		basic_opp_single_move_foresight_unpredictable_score_track.append(temp)
-		print "Initial test (descr_Q_net, single_move_foresight_unpredictable):"
-		temp = test_on_games(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
-		print temp
-		descr_opp_single_move_foresight_unpredictable_score_track.append(temp)
-
-		print "Initial test (basic_Q_net, optimal opponent):"
-		temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
-		print temp
-		basic_opp_optimal_score_track.append(temp)
-		print "Initial test (descr_Q_net, optimal):"
-		temp = test_on_games(descr_Q_net,optimal_opponent,numgames=1000)
-		print temp
-		descr_opp_optimal_score_track.append(temp)
-
-		if pretraining_condition:
-		    ##Description pretraining
-#		    print "Pre-training descriptions..."
-		    train_descriptions(descr_Q_net,descr_train_data,epochs=1)
-#		    print "Description test after pre-training (descr_Q_net):"
-#		    temp = test_descriptions(descr_Q_net,descr_test_data)
-#		    print temp
-#		    descr_descr_MSE_track.append(temp)
-		else: #otherwise test without pre-training
-		    pass
-#		    temp = test_descriptions(descr_Q_net,descr_test_data)
-#		    descr_descr_MSE_track.append(temp)
-
-		print "Training..."
-		for i in xrange(nepochs):
-		    print "training epoch %i" %i
-		    
-		    #play_game(descr_Q_net,optimal_opponent,train=False,description_train=False,replay_buffer=False,display=True)
-		    #print descr_Q_net.Q_move(numpy.array([[1,0,-1],[0,-1,0],[0,0,1]])) 
-
-		    
-		    train_on_games(basic_Q_net,[optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
-		    train_on_games_with_descriptions(descr_Q_net,[optimal_opponent],numgames=games_per_epoch,pctdescriptions=0.2,replay_buffer=use_replay_buffer)
-
+		    print "Description initial test (descr_Q_net):"
+		    temp = test_descriptions(descr_Q_net,descr_test_data)
+		    print temp
+		    descr_descr_MSE_track.append(temp)
+		    print "Initial test (basic_Q_net, single_move_foresight_unpredictable opponent):"
 		    temp = test_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
-		    print "basic_Q_net single_move_foresight_unpredictable opponent average w/d/l:",temp
+		    print temp
 		    basic_opp_single_move_foresight_unpredictable_score_track.append(temp)
+		    print "Initial test (descr_Q_net, single_move_foresight_unpredictable):"
 		    temp = test_on_games(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
-		    print "descr_Q_net single_move_foresight_unpredictable opponent average w/d/l:",temp
+		    print temp
 		    descr_opp_single_move_foresight_unpredictable_score_track.append(temp)
+
+		    print "Initial test (basic_Q_net, optimal opponent):"
 		    temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
-		    print "basic_Q_net optimal opponent average w/d/l:",temp
+		    print temp
 		    basic_opp_optimal_score_track.append(temp)
+		    print "Initial test (descr_Q_net, optimal):"
 		    temp = test_on_games(descr_Q_net,optimal_opponent,numgames=1000)
-		    print "descr_Q_net optimal opponent average w/d/l:",temp
+		    print temp
 		    descr_opp_optimal_score_track.append(temp)
-#		    temp = test_descriptions(descr_Q_net,descr_test_data)
-#		    descr_descr_MSE_track.append(temp)
-#		    print "basic W1"
-#		    print basic_Q_net.sess.run(basic_Q_net.W1)
+
+		    if pretraining_condition:
+			##Description pretraining
+    #		    print "Pre-training descriptions..."
+			train_descriptions(descr_Q_net,descr_train_data,epochs=2)
+			print "Description test after pre-training (descr_Q_net):"
+			temp = test_descriptions(descr_Q_net,descr_test_data)
+			print temp
+    #		    descr_descr_MSE_track.append(temp)
+		    else: #otherwise test without pre-training
+			pass
+    #		    temp = test_descriptions(descr_Q_net,descr_test_data)
+    #		    descr_descr_MSE_track.append(temp)
+
+		    print "Training..."
+		    for i in xrange(nepochs):
+			print "training epoch %i" %i
+			
+			#play_game(descr_Q_net,optimal_opponent,train=False,description_train=False,replay_buffer=False,display=True)
+			#print descr_Q_net.Q_move(numpy.array([[1,0,-1],[0,-1,0],[0,0,1]])) 
+
+			
+			train_on_games(basic_Q_net,[optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
+    #		    train_on_games(descr_Q_net,[optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
+			train_on_games_with_descriptions(descr_Q_net,[optimal_opponent],numgames=games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
+
+			temp = test_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
+			print "basic_Q_net single_move_foresight_unpredictable opponent average w/d/l:",temp
+			basic_opp_single_move_foresight_unpredictable_score_track.append(temp)
+			temp = test_on_games(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
+			print "descr_Q_net single_move_foresight_unpredictable opponent average w/d/l:",temp
+			descr_opp_single_move_foresight_unpredictable_score_track.append(temp)
+			temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
+			print "basic_Q_net optimal opponent average w/d/l:",temp
+			basic_opp_optimal_score_track.append(temp)
+			temp = test_on_games(descr_Q_net,optimal_opponent,numgames=1000)
+			print "descr_Q_net optimal opponent average w/d/l:",temp
+			descr_opp_optimal_score_track.append(temp)
+    #		    temp = test_descriptions(descr_Q_net,descr_test_data)
+    #		    print temp
+    #		    descr_descr_MSE_track.append(temp)
+    #		    print "basic W1"
+    #		    print basic_Q_net.sess.run(basic_Q_net.W1)
+
+			
+
+			if (i%2) == 1:
+			    basic_Q_net.curr_eta *= eta_decay
+			    descr_Q_net.curr_eta *= eta_decay
+			    descr_Q_net.curr_description_eta *= description_eta_decay
+
+		    sess.close()
+		    tf.reset_default_graph()
+
+		    avg_basic_opp_single_move_foresight_unpredictable_score_track += numpy.array(basic_opp_single_move_foresight_unpredictable_score_track)
+		    avg_descr_opp_single_move_foresight_unpredictable_score_track += numpy.array(descr_opp_single_move_foresight_unpredictable_score_track)
+		    avg_basic_opp_optimal_score_track += numpy.array(basic_opp_optimal_score_track)
+		    avg_descr_opp_optimal_score_track += numpy.array(descr_opp_optimal_score_track)
+    #		avg_descr_descr_MSE_track += numpy.array(descr_descr_MSE_track)
+		    numpy.savetxt('descr_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
+		    numpy.savetxt('basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
+		    numpy.savetxt('descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_optimal_score_track,delimiter=',')
+		    numpy.savetxt('basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_optimal_score_track,delimiter=',')
+
 
 		    
+		avg_basic_opp_single_move_foresight_unpredictable_score_track = avg_basic_opp_single_move_foresight_unpredictable_score_track/num_runs_per
+		avg_descr_opp_single_move_foresight_unpredictable_score_track = avg_descr_opp_single_move_foresight_unpredictable_score_track/num_runs_per
+     
+		numpy.savetxt('avg_descr_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_descr_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
+		numpy.savetxt('avg_basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
 
-		    if (i%2) == 1:
-			basic_Q_net.curr_eta *= eta_decay
-			descr_Q_net.curr_eta *= eta_decay
-			descr_Q_net.curr_description_eta *= description_eta_decay
-
-		sess.close()
-		tf.reset_default_graph()
-
-		avg_basic_opp_single_move_foresight_unpredictable_score_track += numpy.array(basic_opp_single_move_foresight_unpredictable_score_track)
-		avg_descr_opp_single_move_foresight_unpredictable_score_track += numpy.array(descr_opp_single_move_foresight_unpredictable_score_track)
-		avg_basic_opp_optimal_score_track += numpy.array(basic_opp_optimal_score_track)
-		avg_descr_opp_optimal_score_track += numpy.array(descr_opp_optimal_score_track)
-#		avg_descr_descr_MSE_track += numpy.array(descr_descr_MSE_track)
-	        numpy.savetxt('descr_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),descr_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
-	        numpy.savetxt('basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
-	        numpy.savetxt('descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),descr_opp_optimal_score_track,delimiter=',')
-	        numpy.savetxt('basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,run),basic_opp_optimal_score_track,delimiter=',')
-
-
-		
-	    avg_basic_opp_single_move_foresight_unpredictable_score_track = avg_basic_opp_single_move_foresight_unpredictable_score_track/num_runs_per
-	    avg_descr_opp_single_move_foresight_unpredictable_score_track = avg_descr_opp_single_move_foresight_unpredictable_score_track/num_runs_per
- 
-	    numpy.savetxt('avg_descr_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_descr_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
-	    numpy.savetxt('avg_basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
-
-	    avg_basic_opp_optimal_score_track = avg_basic_opp_optimal_score_track/num_runs_per
-	    avg_descr_opp_optimal_score_track = avg_descr_opp_optimal_score_track/num_runs_per
- 
-	    numpy.savetxt('avg_descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_descr_opp_optimal_score_track,delimiter=',')
-	    numpy.savetxt('avg_basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),avg_basic_opp_optimal_score_track,delimiter=',')
-#	    numpy.savetxt('avg_descr_descr_MSE_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_descr_MSE_track,delimiter=',')
+		avg_basic_opp_optimal_score_track = avg_basic_opp_optimal_score_track/num_runs_per
+		avg_descr_opp_optimal_score_track = avg_descr_opp_optimal_score_track/num_runs_per
+     
+		numpy.savetxt('avg_descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_descr_opp_optimal_score_track,delimiter=',')
+		numpy.savetxt('avg_basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_basic_opp_optimal_score_track,delimiter=',')
+    #	    numpy.savetxt('avg_descr_descr_MSE_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_descr_MSE_track,delimiter=',')
 
