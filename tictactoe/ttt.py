@@ -637,7 +637,7 @@ for pretraining_condition in pretraining_conditions:
 		    descr_opp_optimal_score_track = []
 		    basic_opp_optimal_score_track = []
 		    for descr_net_run in [True,False]:
-			if (not descr_net_run) and ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_descriptions_conditions[0])):
+			if (not descr_net_run) and ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
 			    continue #If already run the same non-descr run before, continue
 			tf.set_random_seed(run) 
 			numpy.random.seed(run)
