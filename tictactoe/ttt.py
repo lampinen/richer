@@ -3,10 +3,10 @@ import numpy
 #import matplotlib.pyplot as plot
 
 ####Testing parameters###############
-learning_rates = [0.02]
+learning_rates = [0.02,0.01,0.03]
 learning_rate_decays = [0.8]
 pretraining_conditions = [True,False]
-pct_description_conditions = [0.1,0.05,0.2]
+pct_description_conditions = [0.2,0.1]
 num_runs_per = 20
 
 #lr 0.05, decay 0.7, pretrain True, replay false, epsilon = 0.2 - some success on optimal 
@@ -291,38 +291,38 @@ def update_state(state,selection):
 
 
 #############Q-approx network####################
-initialized_stuff = {} #Dictionary to hold weights, etc., to share initilizations between network instantiations (for fair comparison)
+#initialized_stuff = {} #Dictionary to hold weights, etc., to share initilizations between network instantiations (for fair comparison)
 class Q_approx(object):
     def __init__(self):
 	global initialized_stuff
 	self.input_ph = tf.placeholder(tf.float32, shape=[n*n,1])
 	self.target_ph = tf.placeholder(tf.float32, shape=[n*n,1])
-	if initialized_stuff == {}:
-	    self.W1 = tf.Variable(tf.random_normal([nhidden,n*n],0,0.1)) 
-	    self.b1 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
-	    self.W2 = tf.Variable(tf.random_normal([nhidden,nhidden],0,0.1))
-	    self.b2 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
-	    self.W3 = tf.Variable(tf.random_normal([nhidden,nhidden],0,0.1))
-	    self.b3 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
-	    self.W4 = tf.Variable(tf.random_normal([n*n,nhidden],0,0.1))
-	    self.b4 = tf.Variable(tf.random_normal([n*n,1],0,0.1))
-	    initialized_stuff['W1'] = self.W1
-	    initialized_stuff['W2'] = self.W2
-	    initialized_stuff['W3'] = self.W3
-	    initialized_stuff['W4'] = self.W4
-	    initialized_stuff['b1'] = self.b1
-	    initialized_stuff['b2'] = self.b2
-	    initialized_stuff['b3'] = self.b3
-	    initialized_stuff['b4'] = self.b4
-	else:
-	    self.W1 = tf.Variable(initialized_stuff['W1'].initialized_value())
-	    self.W2 = tf.Variable(initialized_stuff['W2'].initialized_value())
-	    self.W3 = tf.Variable(initialized_stuff['W3'].initialized_value())
-	    self.W4 = tf.Variable(initialized_stuff['W4'].initialized_value())
-	    self.b1 = tf.Variable(initialized_stuff['b1'].initialized_value())
-	    self.b2 = tf.Variable(initialized_stuff['b2'].initialized_value())
-	    self.b3 = tf.Variable(initialized_stuff['b3'].initialized_value())
-	    self.b4 = tf.Variable(initialized_stuff['b4'].initialized_value())
+#	if initialized_stuff == {}:
+	self.W1 = tf.Variable(tf.random_normal([nhidden,n*n],0,0.1)) 
+	self.b1 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
+	self.W2 = tf.Variable(tf.random_normal([nhidden,nhidden],0,0.1))
+	self.b2 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
+	self.W3 = tf.Variable(tf.random_normal([nhidden,nhidden],0,0.1))
+	self.b3 = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
+	self.W4 = tf.Variable(tf.random_normal([n*n,nhidden],0,0.1))
+	self.b4 = tf.Variable(tf.random_normal([n*n,1],0,0.1))
+#	    initialized_stuff['W1'] = self.W1
+#	    initialized_stuff['W2'] = self.W2
+#	    initialized_stuff['W3'] = self.W3
+#	    initialized_stuff['W4'] = self.W4
+#	    initialized_stuff['b1'] = self.b1
+#	    initialized_stuff['b2'] = self.b2
+#	    initialized_stuff['b3'] = self.b3
+#	    initialized_stuff['b4'] = self.b4
+#	else:
+#	    self.W1 = tf.Variable(initialized_stuff['W1'].initialized_value())
+#	    self.W2 = tf.Variable(initialized_stuff['W2'].initialized_value())
+#	    self.W3 = tf.Variable(initialized_stuff['W3'].initialized_value())
+#	    self.W4 = tf.Variable(initialized_stuff['W4'].initialized_value())
+#	    self.b1 = tf.Variable(initialized_stuff['b1'].initialized_value())
+#	    self.b2 = tf.Variable(initialized_stuff['b2'].initialized_value())
+#	    self.b3 = tf.Variable(initialized_stuff['b3'].initialized_value())
+#	    self.b4 = tf.Variable(initialized_stuff['b4'].initialized_value())
 	self.keep_prob = tf.placeholder(tf.float32) 
 	self.output = tf.nn.tanh(tf.matmul(self.W4,tf.nn.tanh(tf.matmul(self.W3,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W2,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W1,self.input_ph)+self.b1),keep_prob=self.keep_prob))+self.b2),keep_prob=self.keep_prob))+self.b3))+self.b4)
 	self.var_list = [self.W1,self.W2,self.W3,self.W4,self.b1,self.b2,self.b3,self.b4] #bookkeeping for gradients
@@ -388,21 +388,20 @@ class Q_approx_and_descriptor(Q_approx):
 	super(Q_approx_and_descriptor,self).__init__()
 	self.description_target_ph = tf.placeholder(tf.float32, shape=[descriptor_output_size,1])
 	self.description_input_ph = tf.placeholder(tf.float32, shape=[descriptor_output_size,1])
-	if ('W3d' not in initialized_stuff.keys()):
-	    
-	    self.W3d = tf.Variable(tf.random_normal([nhiddendescriptor,nhidden+descriptor_output_size],0,0.1))
-	    self.b3d = tf.Variable(tf.random_normal([nhiddendescriptor,1],0,0.1))
-	    self.W4d = tf.Variable(tf.random_normal([descriptor_output_size,nhiddendescriptor],0,0.1))
-	    self.b4d = tf.Variable(tf.random_normal([descriptor_output_size,1],0,0.1))
-	    initialized_stuff['W3d'] = self.W3d
-	    initialized_stuff['b3d'] = self.b3d
-	    initialized_stuff['W4d'] = self.W4d
-	    initialized_stuff['b4d'] = self.b4d
-	else:
-	    self.W3d = tf.Variable(initialized_stuff['W3d'].initialized_value())
-	    self.b3d = tf.Variable(initialized_stuff['b3d'].initialized_value())
-	    self.W4d = tf.Variable(initialized_stuff['W4d'].initialized_value())
-	    self.b4d = tf.Variable(initialized_stuff['b4d'].initialized_value())
+#	if ('W3d' not in initialized_stuff.keys()):
+	self.W3d = tf.Variable(tf.random_normal([nhiddendescriptor,nhidden+descriptor_output_size],0,0.1))
+	self.b3d = tf.Variable(tf.random_normal([nhiddendescriptor,1],0,0.1))
+	self.W4d = tf.Variable(tf.random_normal([descriptor_output_size,nhiddendescriptor],0,0.1))
+	self.b4d = tf.Variable(tf.random_normal([descriptor_output_size,1],0,0.1))
+#	    initialized_stuff['W3d'] = self.W3d
+#	    initialized_stuff['b3d'] = self.b3d
+#	    initialized_stuff['W4d'] = self.W4d
+#	    initialized_stuff['b4d'] = self.b4d
+#	else:
+#	    self.W3d = tf.Variable(initialized_stuff['W3d'].initialized_value())
+#	    self.b3d = tf.Variable(initialized_stuff['b3d'].initialized_value())
+#	    self.W4d = tf.Variable(initialized_stuff['W4d'].initialized_value())
+#	    self.b4d = tf.Variable(initialized_stuff['b4d'].initialized_value())
 	self.description_output = tf.nn.tanh(tf.matmul(self.W4d,tf.nn.tanh(tf.matmul(self.W3d,tf.concat(0,(tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W2,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W1,self.input_ph)+self.b1),keep_prob=self.keep_prob))+self.b2),keep_prob=self.keep_prob),self.description_input_ph)))+self.b3d))+self.b4d)
 	self.var_list = [self.W1,self.W2,self.W3,self.W4,self.W3d,self.W4d,self.b1,self.b2,self.b3,self.b4,self.b3d,self.b4d] #bookkeeping for gradients
 	self.description_error = tf.square(self.description_output-self.description_target_ph)
@@ -626,108 +625,112 @@ for pretraining_condition in pretraining_conditions:
 		avg_basic_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
 		for run in xrange(num_runs_per):
 		    print "pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i" %(str(pretraining_condition),eta,eta_decay,pct_descriptions,run)
-		    tf.set_random_seed(run) 
-		    numpy.random.seed(run)
 
-		    initialized_stuff = {} #Dictionary to hold weights, etc., to share initilizations between network instantiations (for fair comparison)
-
-
-		    #network initialization
-		    basic_Q_net = Q_approx()
-		    descr_Q_net = Q_approx_and_descriptor()
-		    sess = tf.Session()
-		    basic_Q_net.set_TF_sess(sess)
-		    descr_Q_net.set_TF_sess(sess)
-		    sess.run(tf.initialize_all_variables())
-
-
-		    if pretraining_condition:
-			#description data creation
-			descr_train_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000),generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),1000) )) 
-		    descr_test_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000), generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),1000) ))
-
-
+#		    initialized_stuff = {} #Dictionary to hold weights, etc., to share initilizations between network instantiations (for fair comparison)
 
 		    descr_descr_MSE_track = []
 		    descr_opp_single_move_foresight_unpredictable_score_track = []
 		    basic_opp_single_move_foresight_unpredictable_score_track = []
 		    descr_opp_optimal_score_track = []
 		    basic_opp_optimal_score_track = []
+		    for descr_net_run in [True,False]:
+			tf.set_random_seed(run) 
+			numpy.random.seed(run)
 
-		    print "Description initial test (descr_Q_net):"
-		    temp = test_descriptions(descr_Q_net,descr_test_data)
-		    print temp
-		    descr_descr_MSE_track.append(temp)
-		    print "Initial test (basic_Q_net, single_move_foresight_unpredictable opponent):"
-		    temp = test_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
-		    print temp
-		    basic_opp_single_move_foresight_unpredictable_score_track.append(temp)
-		    print "Initial test (descr_Q_net, single_move_foresight_unpredictable):"
-		    temp = test_on_games(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
-		    print temp
-		    descr_opp_single_move_foresight_unpredictable_score_track.append(temp)
 
-		    print "Initial test (basic_Q_net, optimal opponent):"
-		    temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
-		    print temp
-		    basic_opp_optimal_score_track.append(temp)
-		    print "Initial test (descr_Q_net, optimal):"
-		    temp = test_on_games(descr_Q_net,optimal_opponent,numgames=1000)
-		    print temp
-		    descr_opp_optimal_score_track.append(temp)
 
-		    if pretraining_condition:
-			##Description pretraining
-    #		    print "Pre-training descriptions..."
-			train_descriptions(descr_Q_net,descr_train_data,epochs=2)
-			print "Description test after pre-training (descr_Q_net):"
-			temp = test_descriptions(descr_Q_net,descr_test_data)
-			print temp
-    #		    descr_descr_MSE_track.append(temp)
-		    else: #otherwise test without pre-training
-			pass
-    #		    temp = test_descriptions(descr_Q_net,descr_test_data)
-    #		    descr_descr_MSE_track.append(temp)
+			#network initialization
+			if descr_net_run:
+			    descr_Q_net = Q_approx_and_descriptor()
+			else:
+			    basic_Q_net = Q_approx()
 
-		    print "Training..."
-		    for i in xrange(nepochs):
-			print "training epoch %i" %i
-			
-			#play_game(descr_Q_net,optimal_opponent,train=False,description_train=False,replay_buffer=False,display=True)
-			#print descr_Q_net.Q_move(numpy.array([[1,0,-1],[0,-1,0],[0,0,1]])) 
+			sess = tf.Session()
+			if descr_net_run:
+			    descr_Q_net.set_TF_sess(sess)
+			else:
+			    basic_Q_net.set_TF_sess(sess)
+			sess.run(tf.initialize_all_variables())
+
+
+			if descr_net_run:
+			    if pretraining_condition:
+				#description data creation
+				descr_train_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000),generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),1000) )) 
+			    descr_test_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000), generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),1000) ))
+
 
 			
-			train_on_games(basic_Q_net,[optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
-    #		    train_on_games(descr_Q_net,[optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
-			train_on_games_with_descriptions(descr_Q_net,[optimal_opponent],numgames=games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
+			    print "Description initial test (descr_Q_net):"
+			    temp = test_descriptions(descr_Q_net,descr_test_data)
+			    print temp
+			    descr_descr_MSE_track.append(temp)
+			    print "Initial test (descr_Q_net, single_move_foresight_unpredictable):"
+			    temp = test_on_games(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
+			    print temp
+			    descr_opp_single_move_foresight_unpredictable_score_track.append(temp)
+			    print "Initial test (descr_Q_net, optimal):"
+			    temp = test_on_games(descr_Q_net,optimal_opponent,numgames=1000)
+			    print temp
+			    descr_opp_optimal_score_track.append(temp)
+			else:
+			    print "Initial test (basic_Q_net, single_move_foresight_unpredictable opponent):"
+			    temp = test_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
+			    print temp
+			    basic_opp_single_move_foresight_unpredictable_score_track.append(temp)
 
-			temp = test_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
-			print "basic_Q_net single_move_foresight_unpredictable opponent average w/d/l:",temp
-			basic_opp_single_move_foresight_unpredictable_score_track.append(temp)
-			temp = test_on_games(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
-			print "descr_Q_net single_move_foresight_unpredictable opponent average w/d/l:",temp
-			descr_opp_single_move_foresight_unpredictable_score_track.append(temp)
-			temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
-			print "basic_Q_net optimal opponent average w/d/l:",temp
-			basic_opp_optimal_score_track.append(temp)
-			temp = test_on_games(descr_Q_net,optimal_opponent,numgames=1000)
-			print "descr_Q_net optimal opponent average w/d/l:",temp
-			descr_opp_optimal_score_track.append(temp)
-    #		    temp = test_descriptions(descr_Q_net,descr_test_data)
-    #		    print temp
-    #		    descr_descr_MSE_track.append(temp)
-    #		    print "basic W1"
-    #		    print basic_Q_net.sess.run(basic_Q_net.W1)
+			    print "Initial test (basic_Q_net, optimal opponent):"
+			    temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
+			    print temp
+			    basic_opp_optimal_score_track.append(temp)
 
-			
+			if descr_net_run:
+			    if pretraining_condition:
+				##Description pretraining
+				train_descriptions(descr_Q_net,descr_train_data,epochs=2)
+				print "Description test after pre-training (descr_Q_net):"
+				temp = test_descriptions(descr_Q_net,descr_test_data)
+				print temp
 
-			if (i%2) == 1:
-			    basic_Q_net.curr_eta *= eta_decay
-			    descr_Q_net.curr_eta *= eta_decay
-			    descr_Q_net.curr_description_eta *= description_eta_decay
+			print "Training..."
+			for i in xrange(nepochs):
+			    print "training epoch %i" %i
+			    
+			    #play_game(descr_Q_net,optimal_opponent,train=False,description_train=False,replay_buffer=False,display=True)
+			    #print descr_Q_net.Q_move(numpy.array([[1,0,-1],[0,-1,0],[0,0,1]])) 
 
-		    sess.close()
-		    tf.reset_default_graph()
+			    if not descr_net_run: 
+				train_on_games(basic_Q_net,[optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
+			    else:
+				train_on_games_with_descriptions(descr_Q_net,[optimal_opponent],numgames=games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
+
+			    if not descr_net_run:
+				temp = test_on_games(basic_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
+				print "basic_Q_net single_move_foresight_unpredictable opponent average w/d/l:",temp
+				basic_opp_single_move_foresight_unpredictable_score_track.append(temp)
+				temp = test_on_games(basic_Q_net,optimal_opponent,numgames=1000)
+				print "basic_Q_net optimal opponent average w/d/l:",temp
+				basic_opp_optimal_score_track.append(temp)
+			    else:
+				temp = test_on_games(descr_Q_net,single_move_foresight_unpredictable_opponent,numgames=1000)
+				print "descr_Q_net single_move_foresight_unpredictable opponent average w/d/l:",temp
+				descr_opp_single_move_foresight_unpredictable_score_track.append(temp)
+				temp = test_on_games(descr_Q_net,optimal_opponent,numgames=1000)
+				print "descr_Q_net optimal opponent average w/d/l:",temp
+				descr_opp_optimal_score_track.append(temp)
+	    #			temp = test_descriptions(descr_Q_net,descr_test_data)
+	    #			print temp
+	    #			descr_descr_MSE_track.append(temp)
+
+			    if (i%2) == 1:
+				if not descr_net_run:
+				    basic_Q_net.curr_eta *= eta_decay
+				else:
+				    descr_Q_net.curr_eta *= eta_decay
+				    descr_Q_net.curr_description_eta *= description_eta_decay
+
+			sess.close()
+			tf.reset_default_graph()
 
 		    avg_basic_opp_single_move_foresight_unpredictable_score_track += numpy.array(basic_opp_single_move_foresight_unpredictable_score_track)
 		    avg_descr_opp_single_move_foresight_unpredictable_score_track += numpy.array(descr_opp_single_move_foresight_unpredictable_score_track)
@@ -738,7 +741,6 @@ for pretraining_condition in pretraining_conditions:
 		    numpy.savetxt('basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
 		    numpy.savetxt('descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_optimal_score_track,delimiter=',')
 		    numpy.savetxt('basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_optimal_score_track,delimiter=',')
-
 
 		    
 		avg_basic_opp_single_move_foresight_unpredictable_score_track = avg_basic_opp_single_move_foresight_unpredictable_score_track/num_runs_per
