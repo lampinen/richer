@@ -3,10 +3,10 @@ import numpy
 #import matplotlib.pyplot as plot
 
 ####Testing parameters###############
-learning_rates = [0.02,0.01,0.03]
+learning_rates = [0.05,0.01,0.02]
 learning_rate_decays = [0.8]
 pretraining_conditions = [True,False]
-pct_description_conditions = [0.2,0.1]
+pct_description_conditions = [0.1,0.2,0.05]
 num_runs_per = 20
 
 #lr 0.05, decay 0.7, pretrain True, replay false, epsilon = 0.2 - some success on optimal 
