@@ -4,7 +4,7 @@ import numpy
 
 ####Testing parameters###############
 learning_rates = [0.05,0.02,0.01]
-learning_rate_decays = [0.8]
+learning_rate_decays = [0.9]
 pretraining_conditions = [True,False]
 pct_description_conditions = [0.04,0.1]
 num_runs_per = 20
@@ -30,7 +30,7 @@ epsilon = 0.2 #epsilon greedy
 #eta_decay = 0.8 #Multiplicative decay per epoch
 description_eta_decay = 0.7 #Multiplicative decay per epoch
 nepochs = 20
-games_per_epoch = 50
+games_per_epoch = 25
 
 #for replay buffer 
 use_replay_buffer = True
@@ -737,27 +737,31 @@ for pretraining_condition in pretraining_conditions:
 			sess.close()
 			tf.reset_default_graph()
 
-		    avg_basic_opp_single_move_foresight_unpredictable_score_track += numpy.array(basic_opp_single_move_foresight_unpredictable_score_track)
 		    avg_descr_opp_single_move_foresight_unpredictable_score_track += numpy.array(descr_opp_single_move_foresight_unpredictable_score_track)
-		    avg_basic_opp_optimal_score_track += numpy.array(basic_opp_optimal_score_track)
 		    avg_descr_opp_optimal_score_track += numpy.array(descr_opp_optimal_score_track)
+		    if not ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
+			avg_basic_opp_optimal_score_track += numpy.array(basic_opp_optimal_score_track)
+			avg_basic_opp_single_move_foresight_unpredictable_score_track += numpy.array(basic_opp_single_move_foresight_unpredictable_score_track)
+			numpy.savetxt('basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
+			numpy.savetxt('basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_optimal_score_track,delimiter=',')
     #		avg_descr_descr_MSE_track += numpy.array(descr_descr_MSE_track)
 		    numpy.savetxt('descr_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
-		    numpy.savetxt('basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
 		    numpy.savetxt('descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_optimal_score_track,delimiter=',')
-		    numpy.savetxt('basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_optimal_score_track,delimiter=',')
 
 		    
-		avg_basic_opp_single_move_foresight_unpredictable_score_track = avg_basic_opp_single_move_foresight_unpredictable_score_track/num_runs_per
+		if not ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
+		    avg_basic_opp_single_move_foresight_unpredictable_score_track = avg_basic_opp_single_move_foresight_unpredictable_score_track/num_runs_per
+		    numpy.savetxt('avg_basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
+		    avg_basic_opp_optimal_score_track = avg_basic_opp_optimal_score_track/num_runs_per
+		    numpy.savetxt('avg_basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_basic_opp_optimal_score_track,delimiter=',')
+
+
 		avg_descr_opp_single_move_foresight_unpredictable_score_track = avg_descr_opp_single_move_foresight_unpredictable_score_track/num_runs_per
      
 		numpy.savetxt('avg_descr_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_descr_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
-		numpy.savetxt('avg_basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_basic_opp_single_move_foresight_unpredictable_score_track,delimiter=',')
 
-		avg_basic_opp_optimal_score_track = avg_basic_opp_optimal_score_track/num_runs_per
 		avg_descr_opp_optimal_score_track = avg_descr_opp_optimal_score_track/num_runs_per
      
 		numpy.savetxt('avg_descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_descr_opp_optimal_score_track,delimiter=',')
-		numpy.savetxt('avg_basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_basic_opp_optimal_score_track,delimiter=',')
     #	    numpy.savetxt('avg_descr_descr_MSE_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_descr_MSE_track,delimiter=',')
 
