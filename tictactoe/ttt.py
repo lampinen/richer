@@ -3,10 +3,10 @@ import numpy
 #import matplotlib.pyplot as plot
 
 ####Testing parameters###############
-learning_rates = [0.05,0.02,0.01]
+learning_rates = [0.04,0.05,0.06]
 learning_rate_decays = [0.8]
-pretraining_conditions = [True,False]
-pct_description_conditions = [0.1,0.06]
+pretraining_conditions = [True]
+pct_description_conditions = [0.08,0.1,0.12,0.16]
 num_runs_per = 20
 
 #lr 0.05, decay 0.7, pretrain True, replay false, epsilon = 0.2 - some success on optimal 
@@ -735,9 +735,9 @@ for pretraining_condition in pretraining_conditions:
 			    
 
 			    if not descr_net_run: 
-				basic_Q_net.train_on_games([random_opponent,optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
+				basic_Q_net.train_on_games([optimal_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
 			    else:
-				descr_Q_net.train_on_games_with_descriptions([random_opponent,optimal_opponent],numgames=games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
+				descr_Q_net.train_on_games_with_descriptions([optimal_opponent],numgames=games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
 
 			    if not descr_net_run:
 				temp = basic_Q_net.test_on_games(single_move_foresight_unpredictable_opponent,numgames=1000)
