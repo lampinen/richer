@@ -496,7 +496,7 @@ class Q_approx_and_descriptor(Q_approx):
 	for j in xrange(n+n+2):
 	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
 	    this_description.append(self.sess.run(self.description_output,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.keep_prob: keep_prob})) 
-	return 
+	return this_description 
 
 
     def get_description_error(self,state,keep_prob=1.0): #Outputs description sum across possible positions of squared error 
@@ -781,7 +781,7 @@ for pretraining_condition in pretraining_conditions:
 		    basic_opp_optimal_score_track = []
 		    auto_opp_single_move_foresight_unpredictable_score_track = []
 		    auto_opp_optimal_score_track = []
-		    for currently_training_net in ["autoencoder","descr","basic"]:
+		    for currently_training_net in ["descr","autoencoder","basic"]:
 			
 			if (currently_training_net != "descr") and ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
 			    continue #If already run the same non-descr run before, continue
@@ -862,6 +862,7 @@ for pretraining_condition in pretraining_conditions:
 				print "Description test after pre-training (descr_Q_net):"
 				temp = descr_Q_net.test_descriptions(descr_test_data)
 				print temp
+				
 			elif currently_training_net == "autoencoder":
 			    if pretraining_condition:
 				##Autoencoder pretraining
