@@ -6,7 +6,7 @@ import numpy
 learning_rates = [0.05]
 learning_rate_decays = [0.8]
 pretraining_conditions = [True]
-pct_description_conditions = [0.08]
+pct_description_conditions = [0.08,0.04]
 num_runs_per = 50
 
 #lr 0.05, decay 0.7, pretrain True, replay false, epsilon = 0.2 - some success on optimal 
@@ -29,6 +29,7 @@ epsilon = 0.2 #epsilon greedy
 #description_eta = 0.0001 #NOTE:Using replay buffer forces description_eta = eta whenever training on games with descriptions (because gradients are combined from both sources)
 #eta_decay = 0.8 #Multiplicative decay per epoch
 autoencoder_eta_decay = 0.7 #Multiplicative decay per epoch
+description_pretraining_epochs = 2
 nepochs = 20
 games_per_epoch = 50
 
@@ -576,9 +577,8 @@ class Q_approx_and_descriptor(Q_approx):
     def test_descriptions(self,data_set):
 	descr_MSE = 0.0
 	for i in xrange(len(data_set)):
-	    descr_MSE += numpy.sum(self.get_description_error(data_set[i])[0])	
-	print "Description MSE = %f" %(descr_MSE/len(data_set)) 
-	return descr_MSE/len(data_set)
+	    descr_MSE += numpy.sum(self.get_description_error(data_set[i]))	
+	return descr_MSE/(len(data_set)*8*descriptor_output_size)
 
     def train_on_games_with_descriptions(self,opponents,numgames=1000,pctdescriptions=0.2,replay_buffer=False):
 	description_step = numgames*pctdescriptions
@@ -686,8 +686,8 @@ class Q_approx_and_autoencoder(Q_approx):
     def test_autoencoder(self,data_set):
 	autoencoder_MSE = 0.0
 	for i in xrange(len(data_set)):
-	    autoencoder_MSE += numpy.sum(self.get_autoencoder_error(data_set[i])[0])	
-	return autoencoder_MSE/len(data_set)
+	    autoencoder_MSE += numpy.sum(self.get_autoencoder_error(data_set[i]))	
+	return autoencoder_MSE/(len(data_set)*3*3)
 
     def train_on_games_with_autoencoder(self,opponents,numgames=1000,pctautoencoding=0.2,replay_buffer=False):
 	autoencoder_step = numgames*pctautoencoding
@@ -858,15 +858,16 @@ for pretraining_condition in pretraining_conditions:
 			if currently_training_net == "descr":
 			    if pretraining_condition:
 				##Description pretraining
-				descr_Q_net.train_descriptions(descr_train_data,epochs=2)
+				descr_Q_net.train_descriptions(descr_train_data,epochs=description_pretraining_epochs)
 				print "Description test after pre-training (descr_Q_net):"
 				temp = descr_Q_net.test_descriptions(descr_test_data)
 				print temp
+
 				
 			elif currently_training_net == "autoencoder":
 			    if pretraining_condition:
 				##Autoencoder pretraining
-				auto_Q_net.train_autoencoding(auto_train_data,epochs=2)
+				auto_Q_net.train_autoencoding(auto_train_data,epochs=description_pretraining_epochs)
 				print "Description test after pre-training (auto_Q_net):"
 				temp = auto_Q_net.test_autoencoder(auto_test_data)
 				print temp
