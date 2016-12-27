@@ -22,14 +22,16 @@ k = 3 #number in row to win,
 #####network/learning parameters###############
 nhidden = 100
 nhiddendescriptor = 20
-descriptor_output_size = (n+n+2)+(3)+(4)+(1) #(position: n rows + n columns + 2 diagonals) +(actual items in this row/column/diagonal) + (interesting state in this location: 3 in row, unblocked 2 in row, for him, for me) + (if interesting, is it involved in a fork?) TODO: include other useful feature descriptors
+descriptor_output_size =(3)+ (4)#(actual items in this row/column/diagonal) + (interesting state in this location: 3 in row for me, unblocked 2 in row for me, "" for him)  TODO: include other useful feature descriptors
+
+descriptor_input_size = (n+n+2)
 discount_factor = 1.0 #for Q-learning
 epsilon = 0.2 #epsilon greedy
 #eta = 0.005
 #description_eta = 0.0001 #NOTE:Using replay buffer forces description_eta = eta whenever training on games with descriptions (because gradients are combined from both sources)
 #eta_decay = 0.8 #Multiplicative decay per epoch
-autoencoder_eta_decay = 0.7 #Multiplicative decay per epoch
-description_pretraining_epochs = 2
+description_eta_decay = 0.7 #Multiplicative decay per epoch
+description_pretraining_epochs = 10
 nepochs = 20
 games_per_epoch = 50
 
@@ -59,75 +61,74 @@ def reward(state):
 	return -1.
     return 0.
 
-#(position: n rows + n columns + 2 diagonals) + (interesting state in this location: 3 in row, unblocked 2 in row, for me, for him) + (if interesting, is it involved in a fork?) TODO: include other useful feature descriptors
 def description_target(state): #helper, generates description target for a given state
     target = []
     fork_state = [oppfork(-state),oppfork(state)]
     for i in xrange(n):
-	target.extend([1 if i == j else -1 for j in xrange(n+n+2)])
+#	target.extend([1 if i == j else -1 for j in xrange(n+n+2)])
 	target.extend(state[i,:])
 	if numpy.sum(state[i,:]) == 3:
-	    target.extend([1,-1,1,-1,-1])	
+	    target.extend([1,-1,-1,-1])	
 	elif numpy.sum(state[i,:]) == -3:
-	    target.extend([1,-1,-1,1,-1])	
+	    target.extend([-1,-1,1,-1])	
 	elif numpy.sum(state[i,:]) == 2:
-	    target.extend([-1,1,1,-1])	
-	    if oppfork(-state):
-		target.extend([1]) #Include fork information if this is involved
-	    else:
-		target.extend([-1])
+	    target.extend([-1,1,-1,-1])	
+#	    if oppfork(-state):
+#		target.extend([1,-1]) #Include fork information if this is involved
+#	    else:
+#		target.extend([-1,-1])
 	elif numpy.sum(state[i,:]) == -2:
-	    target.extend([-1,1,-1,1])	
-	    if oppfork(state):
-		target.extend([1]) #Include fork information if this is involved
-	    else:
-		target.extend([-1])
+	    target.extend([-1,-1,-1,1])	
+#	    if oppfork(state):
+#		target.extend([-1,1]) #Include fork information if this is involved
+#	    else:
+#		target.extend([-1,-1])
 	else:
-	    target.extend([-1,-1,-1,-1,-1])	
+	    target.extend([-1,-1,-1,-1])	
     for i in xrange(n):
-	target.extend([1 if i == j-3 else -1 for j in xrange(n+n+2)])
+#	target.extend([1 if i == j-3 else -1 for j in xrange(n+n+2)])
 	target.extend(state[:,i])
 	if numpy.sum(state[:,i]) == 3:
-	    target.extend([1,-1,1,-1,-1])	
+	    target.extend([1,-1,-1,-1])	
 	elif numpy.sum(state[:,i]) == -3:
-	    target.extend([1,-1,-1,1,-1])	
+	    target.extend([-1,-1,1,-1])	
 	elif numpy.sum(state[:,i]) == 2:
-	    target.extend([-1,1,1,-1])	
-	    if oppfork(-state):
-		target.extend([1]) #Include fork information if this is involved
-	    else:
-		target.extend([-1])
+	    target.extend([-1,1,-1,-1])	
+#	    if oppfork(-state):
+#		target.extend([1,-1]) #Include fork information if this is involved
+#	    else:
+#		target.extend([-1,-1])
 	elif numpy.sum(state[:,i]) == -2:
-	    target.extend([-1,1,-1,1])	
-	    if oppfork(state):
-		target.extend([1]) #Include fork information if this is involved
-	    else:
-		target.extend([-1])
+	    target.extend([-1,-1,-1,1])	
+#	    if oppfork(state):
+#		target.extend([-1,1]) #Include fork information if this is involved
+#	    else:
+#		target.extend([-1,-1])
 	else:
-	    target.extend([-1,-1,-1,-1,-1])	
+	    target.extend([-1,-1,-1,-1])	
     diag = [numpy.diag(state),numpy.diag(numpy.fliplr(state))]
     for i in xrange(2):
 	d = diag[i]
-	target.extend([1 if i == j-6 else -1 for j in xrange(n+n+2)])
+#	target.extend([1 if i == j-6 else -1 for j in xrange(n+n+2)])
 	target.extend(d)
 	if numpy.sum(d) == 3:
-	    target.extend([1,-1,1,-1,-1])	
+	    target.extend([1,-1,-1,-1])	
 	elif numpy.sum(d) == -3:
-	    target.extend([-1,1,1,-1,-1])	
+	    target.extend([-1,-1,1,-1])	
 	elif numpy.sum(d) == 2:
-	    target.extend([-1,1,1,-1])	
-	    if oppfork(-state):
-		target.extend([1]) #Include fork information if this is involved
-	    else:
-		target.extend([-1]) #Include fork information if this is involved
+	    target.extend([-1,1,-1,-1])	
+#	    if oppfork(-state):
+#		target.extend([1,-1]) #Include fork information if this is involved
+#	    else:
+#		target.extend([-1,-1]) #Include fork information if this is involved
 	elif numpy.sum(d) == -2:
-	    target.extend([-1,1,-1,1])	
-	    if oppfork(state):
-		target.extend([1]) #Include fork information if this is involved
-	    else:
-		target.extend([-1]) #Include fork information if this is involved
+	    target.extend([-1,-1,-1,1])	
+#	    if oppfork(state):
+#		target.extend([-1,1]) #Include fork information if this is involved
+#	    else:
+#		target.extend([-1,-1]) #Include fork information if this is involved
 	else:
-	    target.extend([-1,-1,-1,-1,-1])	
+	    target.extend([-1,-1,-1,-1])	
     target = numpy.array(target)
     return target.reshape(8,descriptor_output_size)
 
@@ -460,9 +461,9 @@ class Q_approx_and_descriptor(Q_approx):
 	global initialized_stuff
 	super(Q_approx_and_descriptor,self).__init__()
 	self.description_target_ph = tf.placeholder(tf.float32, shape=[descriptor_output_size,1])
-	self.description_input_ph = tf.placeholder(tf.float32, shape=[descriptor_output_size,1])
+	self.description_input_ph = tf.placeholder(tf.float32, shape=[descriptor_input_size,1])
 #	if ('W3d' not in initialized_stuff.keys()):
-	self.W3d = tf.Variable(tf.random_normal([nhiddendescriptor,nhidden+descriptor_output_size],0,0.1))
+	self.W3d = tf.Variable(tf.random_normal([nhiddendescriptor,nhidden+descriptor_input_size],0,0.1))
 	self.b3d = tf.Variable(tf.random_normal([nhiddendescriptor,1],0,0.1))
 	self.W4d = tf.Variable(tf.random_normal([descriptor_output_size,nhiddendescriptor],0,0.1))
 	self.b4d = tf.Variable(tf.random_normal([descriptor_output_size,1],0,0.1))
@@ -495,7 +496,7 @@ class Q_approx_and_descriptor(Q_approx):
     def describe(self,state,keep_prob=1.0): #Outputs estimated descriptions for the current state
 	this_description = []
 	for j in xrange(n+n+2):
-	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
+	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_input_size,1))
 	    this_description.append(self.sess.run(self.description_output,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.keep_prob: keep_prob})) 
 	return this_description 
 
@@ -505,7 +506,7 @@ class Q_approx_and_descriptor(Q_approx):
 	SSE = numpy.zeros((descriptor_output_size,1))
 	for j in xrange(n+n+2):
 	    this_description_target = state_full_description_target[j].reshape((descriptor_output_size,1))
-	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
+	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_input_size,1))
 	    SSE += self.sess.run(self.description_error,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: keep_prob}) 
 	return SSE 
 
@@ -516,7 +517,7 @@ class Q_approx_and_descriptor(Q_approx):
 	for i in xrange(n+n+2):
 	    this_description_target = state_full_description_target[i].reshape((descriptor_output_size,1))
 	    if sum(this_description_target[-6:]) > -6:
-		this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],i).reshape((descriptor_output_size,1))
+		this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1],i).reshape((descriptor_input_size,1))
 		if replay_buffer:
 		    gradients.append(zip(self.sess.run(self.get_description_train_gradients,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_description_train_variables)) 
 		else:
@@ -528,7 +529,7 @@ class Q_approx_and_descriptor(Q_approx):
 	boring_list = numpy.random.permutation(boring_list)[:n+n+2-len(boring_list)]
 	for j in boring_list:
 	    this_description_target = state_full_description_target[j].reshape((descriptor_output_size,1))
-	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_output_size,1))
+	    this_description_input = numpy.roll([1,-1,-1,-1,-1,-1,-1,-1],j).reshape((descriptor_input_size,1))
 	    if replay_buffer:
 		gradients.append(zip(self.sess.run(self.get_description_train_gradients,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_description_train_variables))
 	    else:
@@ -573,6 +574,7 @@ class Q_approx_and_descriptor(Q_approx):
 	    order = numpy.random.permutation(len(data_set))
 	    for i in order:
 		self.train_description(data_set[i])	
+#	    self.curr_description_eta *= description_eta_decay
 
     def test_descriptions(self,data_set):
 	descr_MSE = 0.0
@@ -682,6 +684,7 @@ class Q_approx_and_autoencoder(Q_approx):
 	    order = numpy.random.permutation(len(data_set))
 	    for i in order:
 		self.train_autoencoder(data_set[i])	
+#	    self.curr_autoencoder_eta *= description_eta_decay
 
     def test_autoencoder(self,data_set):
 	autoencoder_MSE = 0.0
@@ -759,7 +762,6 @@ def generate(generator,condition,n):
 
 for pretraining_condition in pretraining_conditions:
     for eta in learning_rates:
-	description_eta = 0.001
 	for eta_decay in learning_rate_decays:
 	    for pct_descriptions in pct_description_conditions:
 		avg_descr_descr_MSE_track = numpy.zeros(nepochs+1)
@@ -782,6 +784,7 @@ for pretraining_condition in pretraining_conditions:
 		    auto_opp_single_move_foresight_unpredictable_score_track = []
 		    auto_opp_optimal_score_track = []
 		    for currently_training_net in ["descr","autoencoder","basic"]:
+			description_eta = 0.001
 			
 			if (currently_training_net != "descr") and ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
 			    continue #If already run the same non-descr run before, continue
@@ -862,6 +865,9 @@ for pretraining_condition in pretraining_conditions:
 				print "Description test after pre-training (descr_Q_net):"
 				temp = descr_Q_net.test_descriptions(descr_test_data)
 				print temp
+#				this_state = numpy.array([[1,0,-1],[0,1,-1],[1,0,0]])
+#				print this_state
+#				print descr_Q_net.describe(this_state)
 
 				
 			elif currently_training_net == "autoencoder":
@@ -913,10 +919,10 @@ for pretraining_condition in pretraining_conditions:
 				    basic_Q_net.curr_eta *= eta_decay
 				elif currently_training_net == "autoencoder":
 				    auto_Q_net.curr_eta *= eta_decay
-				    auto_Q_net.curr_autoencoder_eta *= autoencoder_eta_decay
+				    auto_Q_net.curr_autoencoder_eta *= description_eta_decay
 				else:
 				    descr_Q_net.curr_eta *= eta_decay
-				    descr_Q_net.curr_description_eta *= autoencoder_eta_decay
+				    descr_Q_net.curr_description_eta *= description_eta_decay
 
 			sess.close()
 			tf.reset_default_graph()
