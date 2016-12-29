@@ -31,7 +31,7 @@ epsilon = 0.2 #epsilon greedy
 #description_eta = 0.0001 #NOTE:Using replay buffer forces description_eta = eta whenever training on games with descriptions (because gradients are combined from both sources)
 #eta_decay = 0.8 #Multiplicative decay per epoch
 description_eta_decay = 0.7 #Multiplicative decay per epoch
-description_pretraining_epochs = 2
+description_pretraining_epochs = 50
 nepochs = 20
 games_per_epoch = 50
 
@@ -416,6 +416,39 @@ class Q_approx(object):
 	else:
 	    return reward
 
+
+    def play_anti_game(self,opponent,train=False,replay_buffer=False,display=False): 
+	"""reward for losing instead of winning"""
+	gofirst = numpy.random.randint(0,2)
+	state = numpy.zeros((3,3))
+	i = 0
+	gradients = []
+	if display:
+	    print "starting game..."
+	while not (catsgame(state) or threeinrow(state) or threeinrow(-state)):
+	    if i % 2 == gofirst:
+		state = opponent(state)
+	    else: 
+		if not train or not replay_buffer:
+		    state = self.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		else:
+		    (state,these_gradients) = self.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		    gradients.extend(these_gradients)
+	    i += 1
+	    if display:
+		print state
+		print
+	reward = 0
+	if threeinrow(state):
+	    reward = -1
+	elif threeinrow(-state) or unblockedopptwo(state):
+	    reward = 1
+	if replay_buffer and train: 
+	    return reward,gradients
+	else:
+	    return reward
+
+
     def train_on_games(self,opponents,numgames=1000,replay_buffer=False):
 	score = 0
 	num_opponents = len(opponents)
@@ -440,6 +473,30 @@ class Q_approx(object):
 		score += self.play_game(opponents[game % num_opponents],train=True,replay_buffer=replay_buffer)
 	return  (float(score)/numgames) 
 
+    def train_on_anti_games(self,opponents,numgames=1000,replay_buffer=False):
+	score = 0
+	num_opponents = len(opponents)
+	gradients = []
+	for game in xrange(numgames):
+	    if replay_buffer:
+		(this_score,these_gradients) = self.play_anti_game(opponents[game % num_opponents],train=True,replay_buffer=replay_buffer)
+		score += this_score
+		gradients.extend(these_gradients)
+		if game % games_per_gradient == 0:
+		    combined_gradients = combine_gradients(gradients)
+		    this_feed_dict = {self.keep_prob: 0.5,self.eta: self.curr_eta}
+		    for i, grad_var in enumerate(self.var_list):
+			if grad_var in combined_gradients.keys():
+			    this_feed_dict[self.placeholder_gradients[i][0]] = combined_gradients[grad_var]
+			else:
+			    this_feed_dict[self.placeholder_gradients[i][0]] = numpy.zeros(grad_var.get_shape()) #If this variable is irrelevant, no updates
+		
+		    self.sess.run(self.apply_gradients,feed_dict=this_feed_dict)
+		    gradients = [] 
+	    else:
+		score += self.play_anti_game(opponents[game % num_opponents],train=True,replay_buffer=replay_buffer)
+	return  (float(score)/numgames) 
+
     def test_on_games(self,opponent,numgames=1000):
 	wins = 0
 	draws = 0
@@ -455,6 +512,20 @@ class Q_approx(object):
 	    
 	return  (float(wins)/numgames,float(draws)/numgames,float(losses)/numgames) 
 
+    def test_on_anti_games(self,opponent,numgames=1000):
+	wins = 0
+	draws = 0
+	losses = 0
+	for game in xrange(numgames):
+	    this_score = self.play_anti_game(opponent,train=False)
+	    if this_score == 1:
+		wins += 1
+	    elif this_score == -1:
+		losses += 1
+	    else:
+		draws += 1 
+	    
+	return  (float(wins)/numgames,float(draws)/numgames,float(losses)/numgames) 
 
 class Q_approx_and_descriptor(Q_approx):
     def __init__(self):
@@ -569,6 +640,38 @@ class Q_approx_and_descriptor(Q_approx):
 	else:
 	    return reward
 	    
+    def play_anti_game(self,opponent,train=False,description_train=False,replay_buffer=False,display=False):
+	gofirst = numpy.random.randint(0,2)
+	state = numpy.zeros((3,3))
+	i = 0
+	gradients = []
+	if display:
+	    print "starting game..."
+	while not (catsgame(state) or threeinrow(state) or threeinrow(-state)):
+	    if i % 2 == gofirst:
+		state = opponent(state)
+	    else: 
+		if not train or not replay_buffer:
+		    state = self.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		else:
+		    (state,these_gradients) = self.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		    gradients.extend(these_gradients)
+	    if description_train and (unblockedopptwo(state) or unblockedopptwo(-state) or threeinrow(state) or threeinrow(-state)):
+		gradients.extend(self.train_description(state,replay_buffer=replay_buffer))
+	    i += 1
+	    if display:
+		print state
+		print
+	reward = 0
+	if threeinrow(state):
+	    reward = -1
+	elif threeinrow(-state) or unblockedopptwo(state):
+	    reward = 1
+	if replay_buffer and train: 
+	    return reward,gradients
+	else:
+	    return reward
+
     def train_descriptions(self,data_set,epochs=1):
 	for e in xrange(epochs):
 	    order = numpy.random.permutation(len(data_set))
@@ -607,6 +710,29 @@ class Q_approx_and_descriptor(Q_approx):
 	return  (float(score)/numgames) 
 	    
 
+    def train_on_anti_games_with_descriptions(self,opponents,numgames=1000,pctdescriptions=0.2,replay_buffer=False):
+	description_step = numgames*pctdescriptions
+	score = 0
+	num_opponents = len(opponents)
+	gradients = []
+	for game in xrange(numgames):
+	    if replay_buffer:
+		(this_score,these_gradients) = self.play_anti_game(opponents[game % num_opponents],train=True,description_train=((game%description_step)==0),replay_buffer=replay_buffer)
+		score += this_score
+		gradients.extend(these_gradients)
+		if game % games_per_gradient == 0:
+		    combined_gradients = combine_gradients(gradients)
+		    this_feed_dict = {self.keep_prob: 0.5,self.eta: self.curr_eta}
+		    for i, grad_var in enumerate(self.var_list):
+			if grad_var in combined_gradients.keys():
+			    this_feed_dict[self.placeholder_gradients[i][0]] = combined_gradients[grad_var]
+			else:
+			    this_feed_dict[self.placeholder_gradients[i][0]] = numpy.zeros(grad_var.get_shape()) #If this variable is irrelevant, no updates
+		    self.sess.run(self.apply_gradients,feed_dict=this_feed_dict)
+		    gradients = [] 
+	    else:
+		score += self.play_anti_game(opponents[game % num_opponents],train=True,description_train=((game%description_step)==0),replay_buffer=replay_buffer)
+	return  (float(score)/numgames) 
 
 
 class Q_approx_and_autoencoder(Q_approx):
@@ -679,6 +805,38 @@ class Q_approx_and_autoencoder(Q_approx):
 	else:
 	    return reward
 	    
+    def play_anti_game(self,opponent,train=False,autoencoder_train=False,replay_buffer=False,display=False):
+	gofirst = numpy.random.randint(0,2)
+	state = numpy.zeros((3,3))
+	i = 0
+	gradients = []
+	if display:
+	    print "starting game..."
+	while not (catsgame(state) or threeinrow(state) or threeinrow(-state)):
+	    if i % 2 == gofirst:
+		state = opponent(state)
+	    else: 
+		if not train or not replay_buffer:
+		    state = self.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		else:
+		    (state,these_gradients) = self.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		    gradients.extend(these_gradients)
+	    if autoencoder_train and (unblockedopptwo(state) or unblockedopptwo(-state) or threeinrow(state) or threeinrow(-state)):
+		gradients.extend(self.train_autoencoder(state,replay_buffer=replay_buffer))
+	    i += 1
+	    if display:
+		print state
+		print
+	reward = 0
+	if threeinrow(state):
+	    reward = -1
+	elif threeinrow(-state) or unblockedopptwo(state):
+	    reward = 1
+	if replay_buffer and train: 
+	    return reward,gradients
+	else:
+	    return reward
+
     def train_autoencoding(self,data_set,epochs=1):
 	for e in xrange(epochs):
 	    order = numpy.random.permutation(len(data_set))
@@ -716,6 +874,30 @@ class Q_approx_and_autoencoder(Q_approx):
 		score += self.play_game(opponents[game % num_opponents],train=True,autoencoder_train=((game%autoencoder_step)==0),replay_buffer=replay_buffer)
 	return  (float(score)/numgames) 
 
+
+    def train_on_anti_games_with_autoencoder(self,opponents,numgames=1000,pctautoencoding=0.2,replay_buffer=False):
+	autoencoder_step = numgames*pctautoencoding
+	score = 0
+	num_opponents = len(opponents)
+	gradients = []
+	for game in xrange(numgames):
+	    if replay_buffer:
+		(this_score,these_gradients) = self.play_anti_game(opponents[game % num_opponents],train=True,autoencoder_train=((game%autoencoder_step)==0),replay_buffer=replay_buffer)
+		score += this_score
+		gradients.extend(these_gradients)
+		if game % games_per_gradient == 0:
+		    combined_gradients = combine_gradients(gradients)
+		    this_feed_dict = {self.keep_prob: 0.5,self.eta: self.curr_eta}
+		    for i, grad_var in enumerate(self.var_list):
+			if grad_var in combined_gradients.keys():
+			    this_feed_dict[self.placeholder_gradients[i][0]] = combined_gradients[grad_var]
+			else:
+			    this_feed_dict[self.placeholder_gradients[i][0]] = numpy.zeros(grad_var.get_shape()) #If this variable is irrelevant, no updates
+		    self.sess.run(self.apply_gradients,feed_dict=this_feed_dict)
+		    gradients = [] 
+	    else:
+		score += self.play_anti_game(opponents[game % num_opponents],train=True,autoencoder_train=((game%autoencoder_step)==0),replay_buffer=replay_buffer)
+	return  (float(score)/numgames) 
 
 
 #########end net definitions#############
