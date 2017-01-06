@@ -1115,32 +1115,32 @@ for pretraining_condition in pretraining_conditions:
 				    basic_opp_optimal_score_track.append(temp)
 			    else: 
 				if currently_training_net == "descr": 
-				    descr_Q_net.train_on_anti_games_with_descriptions([random_opponent],numanti_games=anti_games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
+				    descr_Q_net.train_on_anti_games_with_descriptions([random_opponent],numgames=games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
 				elif currently_training_net == "autoencoder":
-				    auto_Q_net.train_on_anti_games_with_autoencoder([random_opponent],numanti_games=anti_games_per_epoch,pctautoencoding=pct_descriptions,replay_buffer=use_replay_buffer)
+				    auto_Q_net.train_on_anti_games_with_autoencoder([random_opponent],numgames=games_per_epoch,pctautoencoding=pct_descriptions,replay_buffer=use_replay_buffer)
 				else:
-				    basic_Q_net.train_on_anti_games([random_opponent],numanti_games=anti_games_per_epoch,replay_buffer=use_replay_buffer)
+				    basic_Q_net.train_on_anti_games([random_opponent],numgames=games_per_epoch,replay_buffer=use_replay_buffer)
 
 				if currently_training_net == "descr":
-				    temp = descr_Q_net.test_on_anti_games(random_opponent,numanti_games=1000)
+				    temp = descr_Q_net.test_on_anti_games(random_opponent,numgames=1000)
 				    print "descr_Q_net random opponent average w/d/l:",temp
 				    descr_opp_random_score_track.append(temp)
-				    temp = descr_Q_net.test_on_anti_games(optimal_opponent,numanti_games=1000)
+				    temp = descr_Q_net.test_on_anti_games(optimal_opponent,numgames=1000)
 				    print "descr_Q_net optimal opponent average w/d/l:",temp
 				    descr_opp_optimal_score_track.append(temp)
 				elif currently_training_net == "autoencoder":
-				    temp = auto_Q_net.test_on_anti_games(random_opponent,numanti_games=1000)
+				    temp = auto_Q_net.test_on_anti_games(random_opponent,numgames=1000)
 				    print "auto_Q_net random opponent average w/d/l:",temp
 				    auto_opp_random_score_track.append(temp)
-				    temp = auto_Q_net.test_on_anti_games(optimal_opponent,numanti_games=1000)
+				    temp = auto_Q_net.test_on_anti_games(optimal_opponent,numgames=1000)
 				    print "auto_Q_net optimal opponent average w/d/l:",temp
 				    auto_opp_optimal_score_track.append(temp)
 
 				else:
-				    temp = basic_Q_net.test_on_anti_games(random_opponent,numanti_games=1000)
+				    temp = basic_Q_net.test_on_anti_games(random_opponent,numgames=1000)
 				    print "basic_Q_net random opponent average w/d/l:",temp
 				    basic_opp_random_score_track.append(temp)
-				    temp = basic_Q_net.test_on_anti_games(optimal_opponent,numanti_games=1000)
+				    temp = basic_Q_net.test_on_anti_games(optimal_opponent,numgames=1000)
 				    print "basic_Q_net optimal opponent average w/d/l:",temp
 				    basic_opp_optimal_score_track.append(temp)
 
