@@ -22,7 +22,7 @@ k = 3 #number in row to win,
 #####network/learning parameters###############
 nhidden = 100
 nhiddendescriptor = 20
-descriptor_output_size =(8)+(3)+ (4) + (2) #(location) + (actual items in this row/column/diagonal) + (interesting state in this location: 3 in row for me, unblocked 2 in row for me, "" for him) + (fork for me, fork for him)  TODO: include other useful feature descriptors
+descriptor_output_size =(8) +(3)+ (4) + (2) #(location) + (actual items in this row/column/diagonal) + (interesting state in this location: 3 in row for me, unblocked 2 in row for me, "" for him) + (fork for me, fork for him)  TODO: include other useful feature descriptors
 
 descriptor_input_size = (n+n+2)
 discount_factor = 1.0 #for Q-learning
@@ -954,13 +954,13 @@ for pretraining_condition in pretraining_conditions:
     for eta in learning_rates:
 	for eta_decay in learning_rate_decays:
 	    for pct_descriptions in pct_description_conditions:
-		avg_descr_descr_MSE_track = numpy.zeros(nepochs+1)
-		avg_descr_opp_random_score_track = numpy.zeros((nepochs+1,3))
-		avg_descr_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
-		avg_basic_opp_random_score_track = numpy.zeros((nepochs+1,3))
-		avg_basic_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
-		avg_auto_opp_random_score_track = numpy.zeros((nepochs+1,3))
-		avg_auto_opp_optimal_score_track = numpy.zeros((nepochs+1,3))
+		avg_descr_descr_MSE_track = numpy.zeros(2*nepochs+1)
+		avg_descr_opp_random_score_track = numpy.zeros((2*nepochs+1,3))
+		avg_descr_opp_optimal_score_track = numpy.zeros((2*nepochs+1,3))
+		avg_basic_opp_random_score_track = numpy.zeros((2*nepochs+1,3))
+		avg_basic_opp_optimal_score_track = numpy.zeros((2*nepochs+1,3))
+		avg_auto_opp_random_score_track = numpy.zeros((2*nepochs+1,3))
+		avg_auto_opp_optimal_score_track = numpy.zeros((2*nepochs+1,3))
 		for run in xrange(num_runs_per):
 		    print "pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i" %(str(pretraining_condition),eta,eta_decay,pct_descriptions,run)
 
@@ -1177,30 +1177,30 @@ for pretraining_condition in pretraining_conditions:
 		    if not ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
 			avg_basic_opp_optimal_score_track += numpy.array(basic_opp_optimal_score_track)
 			avg_basic_opp_random_score_track += numpy.array(basic_opp_random_score_track)
-			numpy.savetxt('basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_random_score_track,delimiter=',')
+			numpy.savetxt('basic_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_random_score_track,delimiter=',')
 			numpy.savetxt('basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),basic_opp_optimal_score_track,delimiter=',')
 			avg_auto_opp_optimal_score_track += numpy.array(auto_opp_optimal_score_track)
 			avg_auto_opp_random_score_track += numpy.array(auto_opp_random_score_track)
-			numpy.savetxt('auto_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),auto_opp_random_score_track,delimiter=',')
+			numpy.savetxt('auto_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),auto_opp_random_score_track,delimiter=',')
 			numpy.savetxt('auto_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),auto_opp_optimal_score_track,delimiter=',')
 
-		    numpy.savetxt('descr_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_random_score_track,delimiter=',')
+		    numpy.savetxt('descr_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_random_score_track,delimiter=',')
 		    numpy.savetxt('descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_optimal_score_track,delimiter=',')
 
 		    
 		if not ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
 		    avg_basic_opp_random_score_track = avg_basic_opp_random_score_track/num_runs_per
-		    numpy.savetxt('avg_basic_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_basic_opp_random_score_track,delimiter=',')
+		    numpy.savetxt('avg_basic_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_basic_opp_random_score_track,delimiter=',')
 		    avg_basic_opp_optimal_score_track = avg_basic_opp_optimal_score_track/num_runs_per
 		    numpy.savetxt('avg_basic_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_basic_opp_optimal_score_track,delimiter=',')
 		    avg_auto_opp_random_score_track = avg_auto_opp_random_score_track/num_runs_per
-		    numpy.savetxt('avg_auto_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_auto_opp_random_score_track,delimiter=',')
+		    numpy.savetxt('avg_auto_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_auto_opp_random_score_track,delimiter=',')
 		    avg_auto_opp_optimal_score_track = avg_auto_opp_optimal_score_track/num_runs_per
 		    numpy.savetxt('avg_auto_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_auto_opp_optimal_score_track,delimiter=',')
 
 
 		avg_descr_opp_random_score_track = avg_descr_opp_random_score_track/num_runs_per
-		numpy.savetxt('avg_descr_opp_smfu_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_descr_opp_random_score_track,delimiter=',')
+		numpy.savetxt('avg_descr_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_descr_opp_random_score_track,delimiter=',')
 		avg_descr_opp_optimal_score_track = avg_descr_opp_optimal_score_track/num_runs_per
 		numpy.savetxt('avg_descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_descr_opp_optimal_score_track,delimiter=',')
     #	    numpy.savetxt('avg_descr_descr_MSE_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_descr_MSE_track,delimiter=',')
