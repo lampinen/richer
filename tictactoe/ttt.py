@@ -22,7 +22,7 @@ k = 3 #number in row to win,
 #####network/learning parameters###############
 nhidden = 100
 nhiddendescriptor = 20
-descriptor_output_size =(3)+ (4) #(actual items in this row/column/diagonal) + (interesting state in this location: 3 in row, unblocked 2 in row, for me, for him) TODO: include other useful feature descriptors
+descriptor_output_size =(3)+ (4) +(2) #(actual items in this row/column/diagonal) + (interesting state in this location: 3 in row, unblocked 2 in row, for me, for him) +(fork for me, fork for him) TODO: include other useful feature descriptors
 
 descriptor_input_size = (n+n+2)
 discount_factor = 1.0 #for Q-learning
@@ -63,7 +63,7 @@ def reward(state):
 
 def description_target(state): #helper, generates description target for a given state
     target = []
-#    fork_state = [oppfork(-state),oppfork(state)]
+    fork_state = [oppfork(-state),oppfork(state)]
     for i in xrange(n):
 #	target.extend([1 if i == j else -1 for j in xrange(n+n+2)])
 	target.extend(state[i,:])
@@ -88,7 +88,7 @@ def description_target(state): #helper, generates description target for a given
 	else:
 #	    target.extend([-1,-1,-1,-1,-1,-1])	
 	    target.extend([-1,-1,-1,-1])	
-#	target.extend(fork_state)
+	target.extend(fork_state)
     for i in xrange(n):
 #	target.extend([1 if i == j-3 else -1 for j in xrange(n+n+2)])
 	target.extend(state[:,i])
@@ -113,7 +113,7 @@ def description_target(state): #helper, generates description target for a given
 	else:
 #	    target.extend([-1,-1,-1,-1,-1,-1])	
 	    target.extend([-1,-1,-1,-1])	
-#	target.extend(fork_state)
+	target.extend(fork_state)
     diag = [numpy.diag(state),numpy.diag(numpy.fliplr(state))]
     for i in xrange(2):
 	d = diag[i]
@@ -139,7 +139,7 @@ def description_target(state): #helper, generates description target for a given
 #		target.extend([-1,-1]) #Include fork information if this is involved
 	else:
 	    target.extend([-1,-1,-1,-1])	
-#	target.extend(fork_state)
+	target.extend(fork_state)
     target = numpy.array(target)
     return target.reshape(8,descriptor_output_size)
 
