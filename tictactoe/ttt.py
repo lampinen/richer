@@ -139,7 +139,7 @@ def description_target(state): #helper, generates description target for a given
 #		target.extend([-1,-1]) #Include fork information if this is involved
 	else:
 	    target.extend([-1,-1,-1,-1])	
-	target.extend(fork_state)
+#	target.extend(fork_state)
     target = numpy.array(target)
     return target.reshape(8,descriptor_output_size)
 
