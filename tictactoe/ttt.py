@@ -3,11 +3,11 @@ import numpy
 #import matplotlib.pyplot as plot
 
 ####Testing parameters###############
-learning_rates = [0.05]
+learning_rates = [0.05,0.03,0.07]
 learning_rate_decays = [0.8]
-pretraining_conditions = [True]
-pct_description_conditions = [0.08]
-num_runs_per = 50
+pretraining_conditions = [False]
+pct_description_conditions = [0.08,0.12]
+num_runs_per = 20
 
 #lr 0.05, decay 0.7, pretrain True, replay false, epsilon = 0.2 - some success on optimal 
 #lr 0.05, decay 0.7, pretrain True, replay true (gpg = 1), epsilon = 0.2 - some success on optimal 
@@ -22,7 +22,7 @@ k = 3 #number in row to win,
 #####network/learning parameters###############
 nhidden = 100
 nhiddendescriptor = 20
-descriptor_output_size = (8)+(3)+ (4) +(2) #(location) + (actual items in this row/column/diagonal) + (interesting state in this location: 3 in row, unblocked 2 in row, for me, for him) +(fork for me, fork for him) TODO: include other useful feature descriptors
+descriptor_output_size = (3)+ (4) #(location) + (actual items in this row/column/diagonal) + (interesting state in this location: 3 in row, unblocked 2 in row, for me, for him) +(fork for me, fork for him) TODO: include other useful feature descriptors
 
 descriptor_input_size = (n+n+2)
 discount_factor = 1.0 #for Q-learning
@@ -31,7 +31,7 @@ epsilon = 0.2 #epsilon greedy
 #description_eta = 0.0001 #NOTE:Using replay buffer forces description_eta = eta whenever training on games with descriptions (because gradients are combined from both sources)
 #eta_decay = 0.8 #Multiplicative decay per epoch
 description_eta_decay = 0.7 #Multiplicative decay per epoch
-description_pretraining_epochs = 2
+description_pretraining_epochs = 50
 nepochs = 20
 games_per_epoch = 50
 
@@ -63,9 +63,9 @@ def reward(state):
 
 def description_target(state): #helper, generates description target for a given state
     target = []
-    fork_state = [oppfork(-state),oppfork(state)]
+#    fork_state = [oppfork(-state),oppfork(state)]
     for i in xrange(n):
-	target.extend([1 if i == j else -1 for j in xrange(n+n+2)])
+#	target.extend([1 if i == j else -1 for j in xrange(n+n+2)])
 	target.extend(state[i,:])
 	if numpy.sum(state[i,:]) == 3:
 #	    target.extend([1,-1,-1,-1,-1,-1])	
@@ -88,9 +88,9 @@ def description_target(state): #helper, generates description target for a given
 	else:
 #	    target.extend([-1,-1,-1,-1,-1,-1])	
 	    target.extend([-1,-1,-1,-1])	
-	target.extend(fork_state)
+#	target.extend(fork_state)
     for i in xrange(n):
-	target.extend([1 if i == j-3 else -1 for j in xrange(n+n+2)])
+#	target.extend([1 if i == j-3 else -1 for j in xrange(n+n+2)])
 	target.extend(state[:,i])
 	if numpy.sum(state[:,i]) == 3:
 #	    target.extend([1,-1,-1,-1,-1,-1])	
@@ -113,11 +113,11 @@ def description_target(state): #helper, generates description target for a given
 	else:
 #	    target.extend([-1,-1,-1,-1,-1,-1])	
 	    target.extend([-1,-1,-1,-1])	
-	target.extend(fork_state)
+#	target.extend(fork_state)
     diag = [numpy.diag(state),numpy.diag(numpy.fliplr(state))]
     for i in xrange(2):
 	d = diag[i]
-	target.extend([1 if i == j-6 else -1 for j in xrange(n+n+2)])
+#	target.extend([1 if i == j-6 else -1 for j in xrange(n+n+2)])
 	target.extend(d)
 	if numpy.sum(d) == 3:
 #	    target.extend([1,-1,-1,-1,-1,-1])	
@@ -139,7 +139,7 @@ def description_target(state): #helper, generates description target for a given
 #		target.extend([-1,-1]) #Include fork information if this is involved
 	else:
 	    target.extend([-1,-1,-1,-1])	
-	target.extend(fork_state)
+#	target.extend(fork_state)
     target = numpy.array(target)
     return target.reshape(8,descriptor_output_size)
 
