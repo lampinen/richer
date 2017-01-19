@@ -3,11 +3,11 @@ import numpy
 #import matplotlib.pyplot as plot
 
 ####Testing parameters###############
-learning_rates = [0.05,0.03,0.07]
+learning_rates = [0.03]
 learning_rate_decays = [0.8]
-pretraining_conditions = [False]
-pct_description_conditions = [0.08,0.12]
-num_runs_per = 20
+pretraining_conditions = [True]
+pct_description_conditions = [0.08]
+num_runs_per = 50
 
 #lr 0.05, decay 0.7, pretrain True, replay false, epsilon = 0.2 - some success on optimal 
 #lr 0.05, decay 0.7, pretrain True, replay true (gpg = 1), epsilon = 0.2 - some success on optimal 
@@ -31,7 +31,7 @@ epsilon = 0.2 #epsilon greedy
 #description_eta = 0.0001 #NOTE:Using replay buffer forces description_eta = eta whenever training on games with descriptions (because gradients are combined from both sources)
 #eta_decay = 0.8 #Multiplicative decay per epoch
 description_eta_decay = 0.7 #Multiplicative decay per epoch
-description_pretraining_epochs = 50
+description_pretraining_epochs = 2
 nepochs = 20
 games_per_epoch = 50
 
@@ -919,6 +919,138 @@ class Q_approx_and_autoencoder(Q_approx):
 	return  (float(score)/numgames) 
 
 
+class Q_approx_descriptor_legal_and_move_predictor(Q_approx_and_descriptor):
+    def __init__(self):
+	global initialized_stuff
+	super(Q_approx_descriptor_legal_and_move_predictor,self).__init__()
+	self.legality_target_ph = tf.placeholder(tf.float32, shape=[n*n,1])
+	self.move_prediction_target_ph = tf.placeholder(tf.float32, shape=[n*n,1])
+	self.W3l = tf.Variable(tf.random_normal([n*n,nhidden],0,0.1))
+	self.b3l = tf.Variable(tf.random_normal([n*n,1],0,0.1))
+	self.W3m = tf.Variable(tf.random_normal([nhidden,nhidden],0,0.1))
+	self.b3m = tf.Variable(tf.random_normal([nhidden,1],0,0.1))
+	self.W4m = tf.Variable(tf.random_normal([n*n,nhidden],0,0.1))
+	self.b4m = tf.Variable(tf.random_normal([n*n,1],0,0.1))
+	#
+	self.legality_output = tf.nn.tanh(tf.matmul(self.W3l,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W2,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W1,self.input_ph)+self.b1),keep_prob=self.keep_prob))+self.b2),keep_prob=self.keep_prob))+self.b3l)
+	self.move_prediction_output = tf.nn.tanh(tf.matmul(self.W4m,tf.nn.tanh(tf.matmul(self.W3m,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W2,tf.nn.dropout(tf.nn.tanh(tf.matmul(self.W1,self.input_ph)+self.b1),keep_prob=self.keep_prob))+self.b2),keep_prob=self.keep_prob))+self.b3m))+self.b4m)
+	self.var_list = [self.W1,self.W2,self.W3,self.W4,self.W3d,self.W4d,self.W3l,self.W3m,self.W4m,self.b1,self.b2,self.b3,self.b4,self.b3d,self.b4d,self.b3l,self.b3m,self.b4m] #bookkeeping for gradients
+	self.legality_error = tf.square(self.legality_output-self.legality_target_ph)
+	self.move_prediction_error = tf.square(self.move_prediction_output-self.move_prediction_target_ph)
+
+	self.legality_train = self.optimizer.minimize(tf.reduce_sum(self.legality_error))
+	self.move_prediction_train = self.optimizer.minimize(tf.reduce_sum(self.move_prediction_error))
+	self.train_gradients_and_vars = self.optimizer.compute_gradients(tf.reduce_sum(self.error),var_list=self.var_list)
+	self.get_train_gradients = [g for (g,v) in self.train_gradients_and_vars if g is not None]
+	self.get_train_variables = [v for (g,v) in self.train_gradients_and_vars if g is not None]
+	self.description_train_gradients_and_vars = self.optimizer.compute_gradients(tf.reduce_sum(self.description_error),var_list=self.var_list)
+	self.get_description_train_gradients = [g for (g,v) in self.description_train_gradients_and_vars if g is not None]
+	self.get_description_train_variables = [v  for (g,v) in self.description_train_gradients_and_vars if g is not None]
+	self.legality_train_gradients_and_vars = self.optimizer.compute_gradients(tf.reduce_sum(self.legality_error),var_list=self.var_list)
+	self.get_legality_train_gradients = [g for (g,v) in self.legality_train_gradients_and_vars if g is not None]
+	self.get_legality_train_variables = [v  for (g,v) in self.legality_train_gradients_and_vars if g is not None]
+	self.move_prediction_train_gradients_and_vars = self.optimizer.compute_gradients(tf.reduce_sum(self.move_prediction_error),var_list=self.var_list)
+	self.get_move_prediction_train_gradients = [g for (g,v) in self.move_prediction_train_gradients_and_vars if g is not None]
+	self.get_move_prediction_train_variables = [v  for (g,v) in self.move_prediction_train_gradients_and_vars if g is not None]
+	self.placeholder_gradients = []
+	for grad_var in self.var_list:
+	    self.placeholder_gradients.append((tf.placeholder('float', shape=grad_var.get_shape()) ,grad_var))
+	self.apply_gradients = self.optimizer.apply_gradients(self.placeholder_gradients)
+	self.curr_description_eta = description_eta
+
+    def play_game(self,opponent,train=False,description_train=False,replay_buffer=False,display=False):
+	gofirst = numpy.random.randint(0,2)
+	state = numpy.zeros((3,3))
+	i = 0
+	gradients = []
+	if display:
+	    print "starting game..."
+	while not (catsgame(state) or threeinrow(state) or threeinrow(-state)):
+	    if i % 2 == gofirst:
+		prev_state = state.copy()
+		state = opponent(state)
+		if train:
+		    if not replay_buffer:
+			self.sess.run(self.move_prediction_train,feed_dict={self.input_ph: (prev_state).reshape((9,1)),self.move_prediction_target_ph: state.reshape((9,1)),self.keep_prob: 0.5,self.eta: self.curr_description_eta})
+		    else:
+			gradients.append(zip(self.sess.run(self.get_move_prediction_train_gradients,feed_dict={self.input_ph: (prev_state).reshape((9,1)),self.move_prediction_target_ph: state.reshape((9,1)),self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_move_prediction_train_variables)) 
+	    else: 
+		if description_train:
+		    if not replay_buffer:
+			curr_legal = 2*(numpy.reshape(state,(9,1)) == 0)-1
+			self.sess.run(self.legality_train,feed_dict={self.input_ph: (state).reshape((9,1)),self.legality_target_ph: curr_legal ,self.keep_prob: 0.5,self.eta: self.curr_description_eta})
+		    else:
+			curr_legal = 2*(numpy.reshape(state,(9,1)) == 0)-1
+			gradients.append(zip(self.sess.run(self.get_legality_train_gradients,feed_dict={self.input_ph: (state).reshape((9,1)),self.legality_target_ph: curr_legal,self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_legality_train_variables)) 
+
+		if not train or not replay_buffer:
+		    state = self.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		else:
+		    (state,these_gradients) = self.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		    gradients.extend(these_gradients)
+	    if description_train and (unblockedopptwo(state) or unblockedopptwo(-state) or threeinrow(state) or threeinrow(-state)):
+		gradients.extend(self.train_description(state,replay_buffer=replay_buffer))
+	    i += 1
+	    if display:
+		print state
+		print
+	reward = 0
+	if threeinrow(state):
+	    reward = 1
+	elif threeinrow(-state) or unblockedopptwo(state):
+	    reward = -1
+	if replay_buffer and train: 
+	    return reward,gradients
+	else:
+	    return reward
+	    
+    def play_anti_game(self,opponent,train=False,description_train=False,replay_buffer=False,display=False):
+	gofirst = numpy.random.randint(0,2)
+	state = numpy.zeros((3,3))
+	i = 0
+	gradients = []
+	if display:
+	    print "starting game..."
+	while not (catsgame(state) or threeinrow(state) or threeinrow(-state)):
+	    if i % 2 == gofirst:
+		prev_state = state.copy()
+		state = opponent(state)
+		if train:
+		    if not replay_buffer:
+			self.sess.run(self.move_prediction_train,feed_dict={self.input_ph: (prev_state).reshape((9,1)),self.move_prediction_target_ph: state.reshape((9,1)),self.keep_prob: 0.5,self.eta: self.curr_description_eta})
+		    else:
+			gradients.append(zip(self.sess.run(self.get_move_prediction_train_gradients,feed_dict={self.input_ph: (prev_state).reshape((9,1)),self.move_prediction_target_ph: state.reshape((9,1)),self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_move_prediction_train_variables)) 
+	    else: 
+		if description_train:
+		    if not replay_buffer:
+			curr_legal = 2*(numpy.reshape(state,(9,1)) == 0)-1
+			self.sess.run(self.legality_train,feed_dict={self.input_ph: (state).reshape((9,1)),self.legality_target_ph: curr_legal,self.keep_prob: 0.5,self.eta: self.curr_description_eta})
+		    else:
+			curr_legal = 2*(numpy.reshape(state,(9,1)) == 0)-1
+			gradients.append(zip(self.sess.run(self.get_legality_train_gradients,feed_dict={self.input_ph: (state).reshape((9,1)),self.legality_target_ph: curr_legal,self.keep_prob: 0.5,self.eta: self.curr_description_eta}),self.get_legality_train_variables)) 
+
+		if not train or not replay_buffer:
+		    state = self.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		else:
+		    (state,these_gradients) = self.Q_move(state,train=train,replay_buffer=replay_buffer)  
+		    gradients.extend(these_gradients)
+	    if description_train and (unblockedopptwo(state) or unblockedopptwo(-state) or threeinrow(state) or threeinrow(-state)):
+		gradients.extend(self.train_description(state,replay_buffer=replay_buffer))
+	    i += 1
+	    if display:
+		print state
+		print
+	reward = 0
+	if threeinrow(state):
+	    reward = -1
+	elif threeinrow(-state) or unblockedopptwo(state):
+	    reward = 1
+	if replay_buffer and train: 
+	    return reward,gradients
+	else:
+	    return reward
+
+
 #########end net definitions#############
 
 def combine_gradients(gradients):
@@ -968,6 +1100,8 @@ for pretraining_condition in pretraining_conditions:
 		avg_descr_descr_MSE_track = numpy.zeros(2*nepochs+1)
 		avg_descr_opp_random_score_track = numpy.zeros((2*nepochs+1,3))
 		avg_descr_opp_optimal_score_track = numpy.zeros((2*nepochs+1,3))
+		avg_ks_opp_random_score_track = numpy.zeros((2*nepochs+1,3))
+		avg_ks_opp_optimal_score_track = numpy.zeros((2*nepochs+1,3))
 		avg_basic_opp_random_score_track = numpy.zeros((2*nepochs+1,3))
 		avg_basic_opp_optimal_score_track = numpy.zeros((2*nepochs+1,3))
 		avg_auto_opp_random_score_track = numpy.zeros((2*nepochs+1,3))
@@ -980,14 +1114,16 @@ for pretraining_condition in pretraining_conditions:
 		    descr_descr_MSE_track = []
 		    descr_opp_random_score_track = []
 		    descr_opp_optimal_score_track = []
+		    ks_opp_random_score_track = []
+		    ks_opp_optimal_score_track = []
 		    basic_opp_random_score_track = []
 		    basic_opp_optimal_score_track = []
 		    auto_opp_random_score_track = []
 		    auto_opp_optimal_score_track = []
-		    for currently_training_net in ["descr","autoencoder","basic"]:
+		    for currently_training_net in ["ks","descr","autoencoder","basic"]:
 			description_eta = 0.001
 			
-			if (currently_training_net != "descr") and ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
+			if (currently_training_net not in ["ks","descr"]) and ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
 			    continue #If already run the same non-descr run before, continue
 			tf.set_random_seed(run) 
 			numpy.random.seed(run)
@@ -997,6 +1133,8 @@ for pretraining_condition in pretraining_conditions:
 			#network initialization
 			if currently_training_net == "descr":
 			    descr_Q_net = Q_approx_and_descriptor()
+			elif currently_training_net == "ks":
+			    ks_Q_net = Q_approx_descriptor_legal_and_move_predictor()
 			elif currently_training_net == "autoencoder":
 			    auto_Q_net = Q_approx_and_autoencoder()
 			else:
@@ -1005,6 +1143,8 @@ for pretraining_condition in pretraining_conditions:
 			sess = tf.Session()
 			if currently_training_net == "descr":
 			    descr_Q_net.set_TF_sess(sess)
+			elif currently_training_net == "ks":
+			    ks_Q_net.set_TF_sess(sess)
 			elif currently_training_net == "autoencoder":
 			    auto_Q_net.set_TF_sess(sess)
 			else:
@@ -1030,6 +1170,24 @@ for pretraining_condition in pretraining_conditions:
 			    temp = descr_Q_net.test_on_games(optimal_opponent,numgames=1000)
 			    print temp
 			    descr_opp_optimal_score_track.append(temp)
+
+			elif currently_training_net == "ks":
+			    if pretraining_condition:
+				#description data creation
+				descr_train_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000),generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),1000) )) 
+			    descr_test_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000), generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),1000) ))
+			
+			    print "Description initial test (ks_Q_net):"
+			    temp = ks_Q_net.test_descriptions(descr_test_data)
+			    print temp
+			    print "Initial test (descr_Q_net, random):"
+			    temp = ks_Q_net.test_on_games(random_opponent,numgames=1000)
+			    print temp
+			    ks_opp_random_score_track.append(temp)
+			    print "Initial test (ks_Q_net, optimal):"
+			    temp = ks_Q_net.test_on_games(optimal_opponent,numgames=1000)
+			    print temp
+			    ks_opp_optimal_score_track.append(temp)
 			elif currently_training_net == "autoencoder":
 			    if pretraining_condition:
 				auto_train_data = numpy.concatenate((generate(make_ttt_array,lambda x: unblockedopptwo(x) or unblockedopptwo(-x) or threeinrow(x) or threeinrow(-x),2000),generate(make_ttt_array,lambda x: oppfork(x) or oppfork(-x),1000) )) 
@@ -1070,6 +1228,13 @@ for pretraining_condition in pretraining_conditions:
 #				print this_state
 #				print descr_Q_net.describe(this_state)
 
+			elif currently_training_net == "ks":
+			    if pretraining_condition:
+				##Description pretraining
+				ks_Q_net.train_descriptions(descr_train_data,epochs=description_pretraining_epochs)
+				print "Description test after pre-training (ks_Q_net):"
+				temp = ks_Q_net.test_descriptions(descr_test_data)
+				print temp
 				
 			elif currently_training_net == "autoencoder":
 			    if pretraining_condition:
@@ -1089,14 +1254,19 @@ for pretraining_condition in pretraining_conditions:
 				elif currently_training_net == "autoencoder":
 				    auto_Q_net.curr_eta = eta
 				    auto_Q_net.curr_autoencoder_eta = description_eta
-				else:
+				elif currently_training_net == "descr":
 				    descr_Q_net.curr_eta = eta
 				    descr_Q_net.curr_description_eta = description_eta
+				else: 
+				    ks_Q_net.curr_eta = eta
+				    ks_Q_net.curr_description_eta = description_eta
 				
 			    
 			    if i < nepochs:
 				if currently_training_net == "descr": 
 				    descr_Q_net.train_on_games_with_descriptions([optimal_opponent],numgames=games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
+				elif currently_training_net == "ks": 
+				    ks_Q_net.train_on_games_with_descriptions([optimal_opponent],numgames=games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
 				elif currently_training_net == "autoencoder":
 				    auto_Q_net.train_on_games_with_autoencoder([optimal_opponent],numgames=games_per_epoch,pctautoencoding=pct_descriptions,replay_buffer=use_replay_buffer)
 				else:
@@ -1109,6 +1279,13 @@ for pretraining_condition in pretraining_conditions:
 				    temp = descr_Q_net.test_on_games(optimal_opponent,numgames=1000)
 				    print "descr_Q_net optimal opponent average w/d/l:",temp
 				    descr_opp_optimal_score_track.append(temp)
+				elif currently_training_net == "ks":
+				    temp = ks_Q_net.test_on_games(random_opponent,numgames=1000)
+				    print "ks_Q_net random opponent average w/d/l:",temp
+				    ks_opp_random_score_track.append(temp)
+				    temp = ks_Q_net.test_on_games(optimal_opponent,numgames=1000)
+				    print "ks_Q_net optimal opponent average w/d/l:",temp
+				    ks_opp_optimal_score_track.append(temp)
 				elif currently_training_net == "autoencoder":
 				    temp = auto_Q_net.test_on_games(random_opponent,numgames=1000)
 				    print "auto_Q_net random opponent average w/d/l:",temp
@@ -1127,6 +1304,8 @@ for pretraining_condition in pretraining_conditions:
 			    else: 
 				if currently_training_net == "descr": 
 				    descr_Q_net.train_on_anti_games_with_descriptions([random_opponent],numgames=games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
+				elif currently_training_net == "ks": 
+				    ks_Q_net.train_on_anti_games_with_descriptions([random_opponent],numgames=games_per_epoch,pctdescriptions=pct_descriptions,replay_buffer=use_replay_buffer)
 				elif currently_training_net == "autoencoder":
 				    auto_Q_net.train_on_anti_games_with_autoencoder([random_opponent],numgames=games_per_epoch,pctautoencoding=pct_descriptions,replay_buffer=use_replay_buffer)
 				else:
@@ -1139,6 +1318,13 @@ for pretraining_condition in pretraining_conditions:
 				    temp = descr_Q_net.test_on_anti_games(optimal_opponent,numgames=1000)
 				    print "descr_Q_net optimal opponent average w/d/l:",temp
 				    descr_opp_optimal_score_track.append(temp)
+				elif currently_training_net == "ks":
+				    temp = ks_Q_net.test_on_anti_games(random_opponent,numgames=1000)
+				    print "ks_Q_net random opponent average w/d/l:",temp
+				    ks_opp_random_score_track.append(temp)
+				    temp = ks_Q_net.test_on_anti_games(optimal_opponent,numgames=1000)
+				    print "ks_Q_net optimal opponent average w/d/l:",temp
+				    ks_opp_optimal_score_track.append(temp)
 				elif currently_training_net == "autoencoder":
 				    temp = auto_Q_net.test_on_anti_games(random_opponent,numgames=1000)
 				    print "auto_Q_net random opponent average w/d/l:",temp
@@ -1162,9 +1348,12 @@ for pretraining_condition in pretraining_conditions:
 				elif currently_training_net == "autoencoder":
 				    auto_Q_net.curr_eta *= eta_decay
 				    auto_Q_net.curr_autoencoder_eta *= description_eta_decay
-				else:
+				elif currently_training_net == "descr":
 				    descr_Q_net.curr_eta *= eta_decay
 				    descr_Q_net.curr_description_eta *= description_eta_decay
+				else:
+				    ks_Q_net.curr_eta *= eta_decay
+				    ks_Q_net.curr_description_eta *= description_eta_decay
 			if currently_training_net == "descr":
 			    print "Description test after training (descr_Q_net):"
 			    temp = descr_Q_net.test_descriptions(descr_test_data)
@@ -1172,6 +1361,10 @@ for pretraining_condition in pretraining_conditions:
 #				this_state = numpy.array([[1,0,-1],[0,1,-1],[1,0,0]])
 #				print this_state
 #				print descr_Q_net.describe(this_state)
+			elif currently_training_net == "ks":
+			    print "Description test after training (ks_Q_net):"
+			    temp = ks_Q_net.test_descriptions(descr_test_data)
+			    print temp
 
 				
 			elif currently_training_net == "autoencoder":
@@ -1185,6 +1378,12 @@ for pretraining_condition in pretraining_conditions:
 
 		    avg_descr_opp_random_score_track += numpy.array(descr_opp_random_score_track)
 		    avg_descr_opp_optimal_score_track += numpy.array(descr_opp_optimal_score_track)
+		    numpy.savetxt('descr_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_random_score_track,delimiter=',')
+		    numpy.savetxt('descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_optimal_score_track,delimiter=',')
+		    avg_ks_opp_random_score_track += numpy.array(ks_opp_random_score_track)
+		    avg_ks_opp_optimal_score_track += numpy.array(ks_opp_optimal_score_track)
+		    numpy.savetxt('ks_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),ks_opp_random_score_track,delimiter=',')
+		    numpy.savetxt('ks_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),ks_opp_optimal_score_track,delimiter=',')
 		    if not ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
 			avg_basic_opp_optimal_score_track += numpy.array(basic_opp_optimal_score_track)
 			avg_basic_opp_random_score_track += numpy.array(basic_opp_random_score_track)
@@ -1195,8 +1394,6 @@ for pretraining_condition in pretraining_conditions:
 			numpy.savetxt('auto_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),auto_opp_random_score_track,delimiter=',')
 			numpy.savetxt('auto_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),auto_opp_optimal_score_track,delimiter=',')
 
-		    numpy.savetxt('descr_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_random_score_track,delimiter=',')
-		    numpy.savetxt('descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f_run-%i.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions,run),descr_opp_optimal_score_track,delimiter=',')
 
 		    
 		if not ((pretraining_condition != pretraining_conditions[0] or pct_descriptions != pct_description_conditions[0])):
@@ -1215,4 +1412,8 @@ for pretraining_condition in pretraining_conditions:
 		avg_descr_opp_optimal_score_track = avg_descr_opp_optimal_score_track/num_runs_per
 		numpy.savetxt('avg_descr_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_descr_opp_optimal_score_track,delimiter=',')
     #	    numpy.savetxt('avg_descr_descr_MSE_track-%s_eta-%f_eta_decay-%f.csv'%(str(pretraining_condition),eta,eta_decay),descr_descr_MSE_track,delimiter=',')
+		avg_ks_opp_random_score_track = avg_descr_opp_random_score_track/num_runs_per
+		numpy.savetxt('avg_ks_opp_random_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_descr_opp_random_score_track,delimiter=',')
+		avg_ks_opp_optimal_score_track = avg_descr_opp_optimal_score_track/num_runs_per
+		numpy.savetxt('avg_ks_opp_optimal_score_track_pretrain-%s_eta-%f_eta_decay-%f_pct_descriptions-%f.csv'%(str(pretraining_condition),eta,eta_decay,pct_descriptions),avg_descr_opp_optimal_score_track,delimiter=',')
 
