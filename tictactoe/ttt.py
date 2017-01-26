@@ -3,11 +3,11 @@ import numpy
 #import matplotlib.pyplot as plot
 
 ####Testing parameters###############
-learning_rates = [0.03]
+learning_rates = [0.03,0.05,0.07]
 learning_rate_decays = [0.8]
 pretraining_conditions = [True]
-pct_description_conditions = [0.08]
-num_runs_per = 50
+pct_description_conditions = [0.08,0.04]
+num_runs_per = 20
 
 #lr 0.05, decay 0.7, pretrain True, replay false, epsilon = 0.2 - some success on optimal 
 #lr 0.05, decay 0.7, pretrain True, replay true (gpg = 1), epsilon = 0.2 - some success on optimal 
@@ -617,7 +617,7 @@ class Q_approx_and_descriptor(Q_approx):
 	    else:
 		self.sess.run(self.description_train,feed_dict={self.input_ph: (state).reshape((9,1)),self.description_input_ph: this_description_input,self.description_target_ph: this_description_target,self.keep_prob: 0.5,self.eta: self.curr_description_eta}) 
 
-	return gradients
+	return combine_gradients(gradients) #rather than flooding with gradients, just average
 
     def play_game(self,opponent,train=False,description_train=False,replay_buffer=False,display=False):
 	gofirst = numpy.random.randint(0,2)
@@ -786,7 +786,7 @@ class Q_approx_and_autoencoder(Q_approx):
 	    gradients.append(zip(self.sess.run(self.get_autoencoder_train_gradients,feed_dict={self.input_ph: (state).reshape((9,1)),self.autoencoder_target_ph: state.reshape((9,1)),self.keep_prob: 0.5,self.eta: self.curr_autoencoder_eta}),self.get_autoencoder_train_variables)) 
 	else:
 	    self.sess.run(self.autoencoder_train,feed_dict={self.input_ph: (state).reshape((9,1)),self.autoencoder_target_ph: state.reshape((9,1)),self.keep_prob: 0.5,self.eta: self.curr_autoencoder_eta}) 
-	return gradients
+	return combine_gradients(gradients)
 
     def play_game(self,opponent,train=False,autoencoder_train=False,replay_buffer=False,display=False):
 	gofirst = numpy.random.randint(0,2)
@@ -1180,7 +1180,7 @@ for pretraining_condition in pretraining_conditions:
 			    print "Description initial test (ks_Q_net):"
 			    temp = ks_Q_net.test_descriptions(descr_test_data)
 			    print temp
-			    print "Initial test (descr_Q_net, random):"
+			    print "Initial test (ks_Q_net, random):"
 			    temp = ks_Q_net.test_on_games(random_opponent,numgames=1000)
 			    print temp
 			    ks_opp_random_score_track.append(temp)
